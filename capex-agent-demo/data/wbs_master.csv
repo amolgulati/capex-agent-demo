@@ -1,0 +1,51 @@
+wbs_element,well_name,project_type,business_unit,afe_number,status,budget_amount,start_date
+WBS-1001,Eagle Ford 1001-3H,Completion,Permian Basin,AFE-27716,Complete,6680000,2025-03-11
+WBS-1002,Teapot 1002-2H,Drilling,Permian Basin,AFE-63309,Complete,3450000,2026-06-11
+WBS-1003,Bone Spring 1003-9H,Facilities,Permian Basin,AFE-83624,Active,6380000,2025-05-16
+WBS-1004,Muddy 1004-19H,Drilling,Permian Basin,AFE-95525,Active,11680000,2025-09-06
+WBS-1005,Dakota 1005-16H,Facilities,Permian Basin,AFE-73354,Active,5890000,2025-04-07
+WBS-1006,Wolfcamp 1006-14H,Workover,Powder River,AFE-66438,Active,10670000,2026-02-25
+WBS-1007,Shannon 1007-2H,Completion,Permian Basin,AFE-32899,Active,3240000,2026-02-17
+WBS-1008,Muddy 1008-11H,Workover,Permian Basin,AFE-34322,Active,7090000,2025-07-16
+WBS-1009,Bone Spring 1009-18H,Completion,Permian Basin,AFE-78800,Active,4870000,2026-03-09
+WBS-1010,Spraberry 1010-9H,Completion,Permian Basin,AFE-80637,Active,7110000,2025-03-19
+WBS-1011,Shannon 1011-18H,Completion,Permian Basin,AFE-32833,Active,3030000,2025-01-16
+WBS-1012,Wolfcamp 1012-8H,Completion,Permian Basin,AFE-41798,Active,10320000,2026-05-13
+WBS-1013,Shannon 1013-7H,Facilities,Permian Basin,AFE-72565,Active,3200000,2025-06-18
+WBS-1014,Sussex 1014-1H,Completion,Permian Basin,AFE-71173,Active,7430000,2026-04-11
+WBS-1015,Niobrara 1015-14H,Workover,DJ Basin,AFE-92845,Active,11960000,2025-06-08
+WBS-1016,Bone Spring 1016-10H,Facilities,DJ Basin,AFE-48534,Complete,3190000,2025-03-04
+WBS-1017,Muddy 1017-11H,Facilities,Permian Basin,AFE-27492,Suspended,3020000,2026-05-04
+WBS-1018,Turner 1018-17H,Completion,Permian Basin,AFE-40635,Active,3160000,2026-06-05
+WBS-1019,Wolfcamp 1019-6H,Workover,DJ Basin,AFE-28981,Active,14180000,2025-03-11
+WBS-1020,Frontier 1020-8H,Workover,Permian Basin,AFE-72923,Active,4450000,2025-09-10
+WBS-1021,Mowry 1021-20H,Drilling,DJ Basin,AFE-25209,Active,14680000,2025-03-25
+WBS-1022,Sussex 1022-19H,Completion,Permian Basin,AFE-94085,Active,12700000,2025-11-20
+WBS-1023,Teapot 1023-9H,Completion,Permian Basin,AFE-46772,Active,8430000,2025-09-02
+WBS-1024,Niobrara 1024-13H,Workover,Powder River,AFE-37154,Active,8140000,2026-04-14
+WBS-1025,Codell 1025-3H,Workover,DJ Basin,AFE-21220,Active,11380000,2025-04-13
+WBS-1026,Wolfcamp 1026-18H,Facilities,Permian Basin,AFE-47938,Suspended,12360000,2025-09-29
+WBS-1027,Spraberry 1027-12H,Completion,Permian Basin,AFE-29016,Active,7000000,2026-01-14
+WBS-1028,Niobrara 1028-6H,Facilities,Permian Basin,AFE-77433,Active,13120000,2025-11-06
+WBS-1029,Mowry 1029-17H,Facilities,Permian Basin,AFE-21025,Active,13350000,2025-11-03
+WBS-1030,Teapot 1030-4H,Drilling,DJ Basin,AFE-37601,Active,7410000,2025-04-29
+WBS-1031,Teapot 1031-4H,Drilling,Powder River,AFE-92512,Active,5180000,2025-10-06
+WBS-1032,Niobrara 1032-20H,Workover,DJ Basin,AFE-47607,Suspended,9020000,2025-07-28
+WBS-1033,Frontier 1033-9H,Completion,Permian Basin,AFE-86244,Active,12000000,2025-09-15
+WBS-1034,Teapot 1034-2H,Drilling,DJ Basin,AFE-32097,Complete,14990000,2026-03-10
+WBS-1035,Parkman 1035-9H,Facilities,Permian Basin,AFE-25778,Complete,2070000,2025-12-08
+WBS-1036,Dakota 1036-5H,Facilities,Powder River,AFE-54335,Complete,5300000,2026-03-29
+WBS-1037,Turner 1037-14H,Drilling,Powder River,AFE-93519,Active,2190000,2025-04-25
+WBS-1038,Wolfcamp 1038-5H,Completion,Permian Basin,AFE-91511,Active,2730000,2026-01-14
+WBS-1039,Mowry 1039-18H,Workover,Permian Basin,AFE-39410,Active,10800000,2025-05-11
+WBS-1040,Eagle Ford 1040-10H,Workover,DJ Basin,AFE-67795,Active,2810000,2026-01-02
+WBS-1041,Bone Spring 1041-8H,Completion,Permian Basin,AFE-33473,Active,9240000,2026-02-21
+WBS-1042,Mowry 1042-5H,Drilling,Permian Basin,AFE-51029,Active,5320000,2025-07-01
+WBS-1043,Teapot 1043-14H,Workover,Permian Basin,AFE-23248,Active,5670000,2025-12-07
+WBS-1044,Dakota 1044-14H,Completion,Permian Basin,AFE-52527,Complete,7460000,2025-06-13
+WBS-1045,Dakota 1045-4H,Facilities,Permian Basin,AFE-70140,Active,2790000,2026-04-27
+WBS-1046,Bone Spring 1046-7H,Workover,Permian Basin,AFE-80332,Active,9160000,2025-11-09
+WBS-1047,Parkman 1047-8H,Workover,Permian Basin,AFE-49219,Active,2480000,2025-07-17
+WBS-1048,Sussex 1048-11H,Drilling,Permian Basin,AFE-56517,Active,3420000,2025-10-13
+WBS-1049,Codell 1049-17H,Drilling,Permian Basin,AFE-72386,Active,12980000,2025-12-06
+WBS-1050,Eagle Ford 1050-4H,Facilities,DJ Basin,AFE-54237,Active,5650000,2025-09-29
