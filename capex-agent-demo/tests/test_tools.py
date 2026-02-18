@@ -23,6 +23,7 @@ from utils.formatting import format_dollar  # noqa: E402
 from agent.tools import (  # noqa: E402
     load_wbs_master, load_itd, load_vow,
     calculate_accruals, get_exceptions, get_accrual_detail,
+    generate_net_down_entry, get_summary, generate_outlook,
 )
 
 # ---------------------------------------------------------------------------
@@ -34,7 +35,7 @@ ALL_WBS = [f"WBS-{i}" for i in range(1001, 1051)]  # WBS-1001 .. WBS-1050
 MISSING_ITD_WBS = {"WBS-1031", "WBS-1038", "WBS-1044"}
 ZERO_ITD_WBS = {"WBS-1047", "WBS-1048", "WBS-1049"}
 MISSING_VOW_ONLY = {"WBS-1015", "WBS-1042"}
-MISSING_VOW_ALL = MISSING_VOW_ONLY | MISSING_ITD_WBS  # 5 total
+MISSING_VOW_ALL = MISSING_VOW_ONLY.copy()  # only 2 absent from vow
 
 
 # ===================================================================
@@ -176,13 +177,13 @@ class TestToolLoadVow:
         self.result = load_vow(self.state, ALL_WBS)
 
     def test_matched_count(self):
-        assert self.result["matched_count"] == 45
+        assert self.result["matched_count"] == 48
 
     def test_total_requested(self):
         assert self.result["total_requested"] == 50
 
     def test_unmatched_includes_expected(self):
-        """Unmatched should include both missing-VOW-only and missing-ITD WBS."""
+        """Unmatched should include the 2 missing-VOW-only WBS."""
         unmatched = set(self.result["unmatched"])
         assert MISSING_VOW_ALL <= unmatched, (
             f"Expected at least {MISSING_VOW_ALL}, got {unmatched}"
@@ -190,7 +191,7 @@ class TestToolLoadVow:
 
     def test_stores_in_session_state(self):
         assert "vow_data" in self.state
-        assert len(self.state["vow_data"]) == 45
+        assert len(self.state["vow_data"]) == 48
 
     def test_record_schema(self):
         """Each record in vow_records must have the expected keys."""
@@ -298,14 +299,21 @@ class TestCalculateAccrualsUseVow:
         assert wbs1001[0]["prior_accrual"] is not None
 
     def test_missing_itd_uses_vow_as_accrual(self):
-        """In use_vow mode, missing-ITD WBS should have accrual = VOW."""
-        # WBS-1031 is missing from ITD but also missing from VOW, so skip.
-        # WBS-1038 and WBS-1044 are similarly missing from both.
-        # The missing-ITD WBS that DO have VOW should have ITD=0.
-        # Actually, WBS-1031/1038/1044 are missing from BOTH ITD and VOW,
-        # so they get "Missing VOW" and gross_accrual=None.
-        # This test verifies the mode is applied by checking summary.
-        assert self.result["summary"]["calculated_count"] > 0
+        """In use_vow mode, missing-ITD WBS should have accrual = full VOW."""
+        # WBS-1031/1038/1044 have VOW but no ITD. In use_vow mode,
+        # ITD is treated as $0 so gross_accrual should equal vow_amount.
+        for wbs_id in MISSING_ITD_WBS:
+            recs = [a for a in self.result["accruals"] if a["wbs_element"] == wbs_id]
+            assert len(recs) == 1, f"{wbs_id} not found in accruals"
+            rec = recs[0]
+            assert rec["vow_amount"] is not None, f"{wbs_id} should have a VOW amount"
+            assert rec["itd_amount"] == 0, (
+                f"{wbs_id} ITD should be treated as 0, got {rec['itd_amount']}"
+            )
+            assert rec["gross_accrual"] == rec["vow_amount"], (
+                f"{wbs_id} accrual should equal VOW ({rec['vow_amount']}), "
+                f"got {rec['gross_accrual']}"
+            )
 
 
 # ===================================================================
@@ -340,17 +348,20 @@ class TestCalculateAccrualsExclude:
     def test_still_detects_exceptions(self):
         """Key exception types must still be detected in exclude mode."""
         all_types = {e["exception_type"] for e in self.result_excl["exceptions"]}
+        assert "Missing ITD" in all_types
         assert "Negative Accrual" in all_types
         assert "Missing VOW" in all_types
         assert "Large Swing" in all_types
         assert "Zero ITD" in all_types
 
     def test_missing_itd_excluded_from_total(self):
-        """In exclude mode, total_gross_accrual should differ from use_vow mode
-        (unless no WBS is missing ITD but has VOW, which is the case here since
-        WBS-1031/1038/1044 are also missing VOW)."""
-        # This test verifies the code path runs without error.
+        """In exclude mode, total_gross_accrual should be lower than use_vow mode
+        because WBS-1031/1038/1044 have VOW but no ITD and are excluded."""
         assert self.result_excl["summary"]["total_gross_accrual"] is not None
+        assert (
+            self.result_excl["summary"]["total_gross_accrual"]
+            < self.result_vow["summary"]["total_gross_accrual"]
+        )
 
 
 # ===================================================================
@@ -452,3 +463,188 @@ class TestGetAccrualDetail:
     def test_not_found(self):
         result = get_accrual_detail(self.state, wbs_element="WBS-9999")
         assert "error" in result
+
+
+# ===================================================================
+# 9. GENERATE NET-DOWN ENTRY
+# ===================================================================
+
+
+class TestGenerateNetDownEntry:
+    """Verify generate_net_down_entry produces a valid journal entry."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        self.state = {}
+        _load_all_data(self.state)
+        calculate_accruals(self.state, missing_itd_handling="use_vow_as_accrual")
+        self.result = generate_net_down_entry(self.state)
+
+    def test_returns_journal_entry(self):
+        je = self.result["journal_entry"]
+        assert "period" in je
+        assert "net_down_amount" in je
+        assert "total_current_accrual" in je
+        assert "total_prior_accrual" in je
+
+    def test_net_down_equals_current_minus_prior(self):
+        je = self.result["journal_entry"]
+        assert je["total_current_accrual"] - je["total_prior_accrual"] == je["net_down_amount"]
+
+    def test_detail_per_wbs(self):
+        detail = self.result["detail"]
+        assert len(detail) > 0
+        rec = detail[0]
+        assert "wbs_element" in rec
+        assert "current_accrual" in rec
+        assert "prior_accrual" in rec
+        assert "net_change" in rec
+
+    def test_has_debit_credit(self):
+        je = self.result["journal_entry"]
+        assert "debit_account" in je
+        assert "credit_account" in je
+
+    def test_has_summary_text(self):
+        assert isinstance(self.result["summary_text"], str)
+        assert len(self.result["summary_text"]) > 0
+
+
+# ===================================================================
+# 10. GET SUMMARY
+# ===================================================================
+
+
+class TestGetSummary:
+    """Verify get_summary groups accruals by dimension."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        self.state = {}
+        _load_all_data(self.state)
+        calculate_accruals(self.state, missing_itd_handling="use_vow_as_accrual")
+
+    def test_group_by_business_unit(self):
+        result = get_summary(self.state, group_by="business_unit")
+        group_values = [s["group_value"] for s in result["summary"]]
+        assert "Permian Basin" in group_values
+
+    def test_group_by_project_type(self):
+        result = get_summary(self.state, group_by="project_type")
+        group_values = [s["group_value"] for s in result["summary"]]
+        assert "Drilling" in group_values
+
+    def test_totals_match_grand_total(self):
+        result = get_summary(self.state, group_by="business_unit")
+        group_sum = sum(s["total_accrual"] for s in result["summary"])
+        assert abs(group_sum - result["grand_total"]) < 0.01
+
+    def test_pct_of_total_sums_to_1(self):
+        result = get_summary(self.state, group_by="business_unit")
+        pct_sum = sum(s["pct_of_total"] for s in result["summary"])
+        assert abs(pct_sum - 1.0) < 0.01
+
+    def test_summary_record_schema(self):
+        result = get_summary(self.state, group_by="business_unit")
+        assert len(result["summary"]) > 0
+        rec = result["summary"][0]
+        expected_keys = {
+            "group_value", "total_accrual", "wbs_count",
+            "avg_accrual", "exception_count", "pct_of_total",
+        }
+        assert expected_keys <= set(rec.keys())
+
+
+# ===================================================================
+# 11. GENERATE OUTLOOK
+# ===================================================================
+
+
+class TestGenerateOutlook:
+    """Verify generate_outlook projects future accruals correctly."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        self.state = {}
+        _load_all_data(self.state)
+
+    def test_returns_3_months(self):
+        result = generate_outlook(self.state, months_forward=3)
+        assert len(result["outlook"]) == 3
+
+    def test_returns_6_months(self):
+        result = generate_outlook(self.state, months_forward=6)
+        assert len(result["outlook"]) == 6
+
+    def test_month_schema(self):
+        result = generate_outlook(self.state, months_forward=3)
+        rec = result["outlook"][0]
+        expected_keys = {
+            "month", "expected_accrual", "well_count",
+            "new_wells_starting", "phases_completing",
+        }
+        assert expected_keys <= set(rec.keys())
+
+    def test_total_outlook_is_sum(self):
+        result = generate_outlook(self.state, months_forward=3)
+        expected = sum(m["expected_accrual"] for m in result["outlook"])
+        assert abs(expected - result["total_outlook"]) < 0.01
+
+    def test_wells_in_schedule_count(self):
+        result = generate_outlook(self.state, months_forward=3)
+        assert result["wells_in_schedule"] > 0
+
+    def test_schedule_detail_present(self):
+        result = generate_outlook(self.state, months_forward=3)
+        assert len(result["schedule_detail"]) > 0
+        rec = result["schedule_detail"][0]
+        assert "wbs_element" in rec
+        assert "estimated_cost" in rec
+
+    def test_months_are_sequential(self):
+        result = generate_outlook(self.state, months_forward=3)
+        months = [m["month"] for m in result["outlook"]]
+        assert months == ["2026-02", "2026-03", "2026-04"]
+
+
+# ===================================================================
+# 10. TOOL DEFINITIONS — agent/tool_definitions.py
+# ===================================================================
+
+from agent.tool_definitions import TOOL_DEFINITIONS
+
+
+class TestToolDefinitions:
+    """PRD AC 13: tool_definitions.py contains valid Claude API schemas."""
+
+    def test_has_9_tools(self):
+        assert len(TOOL_DEFINITIONS) == 9
+
+    def test_all_tools_have_required_fields(self):
+        for tool in TOOL_DEFINITIONS:
+            assert "name" in tool, f"Tool missing 'name': {tool}"
+            assert "description" in tool, f"Tool {tool.get('name')} missing 'description'"
+            assert "input_schema" in tool, f"Tool {tool.get('name')} missing 'input_schema'"
+
+    def test_all_tool_names(self):
+        names = {t["name"] for t in TOOL_DEFINITIONS}
+        expected = {
+            "load_wbs_master", "load_itd", "load_vow",
+            "calculate_accruals", "get_exceptions", "get_accrual_detail",
+            "generate_net_down_entry", "get_summary", "generate_outlook",
+        }
+        assert names == expected
+
+    def test_schemas_are_valid_json_schema(self):
+        for tool in TOOL_DEFINITIONS:
+            schema = tool["input_schema"]
+            assert schema.get("type") == "object"
+            assert "properties" in schema
+
+    def test_session_state_not_in_schemas(self):
+        """session_state is injected by orchestrator, not in API schemas."""
+        for tool in TOOL_DEFINITIONS:
+            props = tool["input_schema"].get("properties", {})
+            assert "session_state" not in props, (
+                f"Tool {tool['name']} should not expose session_state"
+            )

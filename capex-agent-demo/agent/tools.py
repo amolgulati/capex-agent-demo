@@ -6,6 +6,8 @@ data between tool calls. All functions return plain dicts (JSON-serializable).
 """
 
 import sys
+from datetime import date
+from calendar import monthrange
 from pathlib import Path
 
 import pandas as pd
@@ -15,6 +17,13 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from utils import data_loader
+from utils.formatting import format_dollar
+
+# ---------------------------------------------------------------------------
+# Reference date constant — hardcoded to January 2026
+# ---------------------------------------------------------------------------
+
+REFERENCE_DATE = date(2026, 1, 1)
 
 
 def load_wbs_master(session_state: dict, business_unit: str) -> dict:
@@ -84,7 +93,7 @@ _EXCEPTION_TEMPLATES = {
         "recommended_action": "Verify ITD charges with AP and request updated VOW from engineer.",
     },
     "Missing ITD": {
-        "detail": "WBS has a VOW estimate but no ITD postings in SAP extract.",
+        "detail": "No ITD postings found in SAP extract for this WBS element.",
         "recommended_action": "Confirm whether work has started; if yes, investigate missing cost postings.",
     },
     "Missing VOW": {
@@ -115,6 +124,10 @@ def calculate_accruals(session_state: dict, missing_itd_handling: str) -> dict:
     Returns:
         dict with "accruals", "summary", and "exceptions" keys.
     """
+    for key in ("wbs_data", "itd_data", "vow_data"):
+        if key not in session_state:
+            return {"error": f"Required data not loaded. Missing: {key}"}
+
     wbs_df = session_state["wbs_data"].copy()
     itd_df = session_state["itd_data"].copy()
     vow_df = session_state["vow_data"].copy()
@@ -146,8 +159,8 @@ def calculate_accruals(session_state: dict, missing_itd_handling: str) -> dict:
         row_exceptions = []  # list of (type, severity) tuples
         gross_accrual = None
 
-        # --- Flag Missing ITD (any WBS absent from ITD extract) ---
-        if itd is None:
+        # --- Flag Missing ITD (WBS has VOW but absent from ITD extract) ---
+        if itd is None and vow is not None:
             row_exceptions.append(("Missing ITD", "HIGH"))
 
         # --- Flag Missing VOW (any WBS absent from VOW estimates) ---
@@ -246,6 +259,12 @@ def calculate_accruals(session_state: dict, missing_itd_handling: str) -> dict:
     net_changes = [a["net_change"] for a in calculated if a["net_change"] is not None]
     net_change_total = sum(net_changes) if net_changes else 0
 
+    pct_change_total = (
+        net_change_total / prior_period_total
+        if prior_period_total and prior_period_total != 0
+        else None
+    )
+
     summary = {
         "total_gross_accrual": total_gross,
         "total_wbs_count": len(accruals),
@@ -253,6 +272,7 @@ def calculate_accruals(session_state: dict, missing_itd_handling: str) -> dict:
         "exception_count": len(exceptions),
         "prior_period_total": prior_period_total,
         "net_change_total": net_change_total,
+        "pct_change_total": pct_change_total,
     }
 
     # ----- Store in session state -----
@@ -368,3 +388,339 @@ def get_accrual_detail(session_state: dict, wbs_element: str) -> dict:
     result["exceptions"] = [e for e in all_exceptions if e["wbs_element"] == wbs_element]
 
     return result
+
+
+# ===================================================================
+# 9. GENERATE NET-DOWN ENTRY
+# ===================================================================
+
+
+def generate_net_down_entry(session_state: dict) -> dict:
+    """Generate the monthly net-down journal entry from accrual results.
+
+    Reads session_state["accrual_results"] (list of accrual dicts from
+    calculate_accruals). For each WBS with gross_accrual not None:
+    net_change = gross_accrual - (prior_accrual or 0).
+    Sum to get total_current, total_prior, net_down = total_current - total_prior.
+
+    Returns:
+        dict with "journal_entry", "detail", and "summary_text" keys.
+    """
+    accrual_results = session_state.get("accrual_results", [])
+
+    detail = []
+    total_current = 0.0
+    total_prior = 0.0
+
+    for rec in accrual_results:
+        if rec["gross_accrual"] is None:
+            continue
+        current = rec["gross_accrual"]
+        prior = rec["prior_accrual"] if rec["prior_accrual"] is not None else 0
+        net_change = current - prior
+        total_current += current
+        total_prior += prior
+        detail.append({
+            "wbs_element": rec["wbs_element"],
+            "well_name": rec["well_name"],
+            "current_accrual": current,
+            "prior_accrual": prior,
+            "net_change": net_change,
+        })
+
+    net_down = total_current - total_prior
+
+    if net_down >= 0:
+        debit_account = "1410-000 (CapEx WIP)"
+        credit_account = "2110-000 (Accrued Liabilities)"
+    else:
+        debit_account = "2110-000 (Accrued Liabilities)"
+        credit_account = "1410-000 (CapEx WIP)"
+
+    journal_entry = {
+        "period": "2026-01",
+        "description": "Monthly CapEx gross accrual net-down",
+        "debit_account": debit_account,
+        "credit_account": credit_account,
+        "total_current_accrual": total_current,
+        "total_prior_accrual": total_prior,
+        "net_down_amount": net_down,
+    }
+
+    summary_text = (
+        f"Net-down journal entry for 2026-01: "
+        f"Current accrual {format_dollar(total_current)}, "
+        f"Prior period {format_dollar(total_prior)}, "
+        f"Net-down {format_dollar(net_down)}. "
+        f"Debit {debit_account}, Credit {credit_account}."
+    )
+
+    return {
+        "journal_entry": journal_entry,
+        "detail": detail,
+        "summary_text": summary_text,
+    }
+
+
+# ===================================================================
+# 10. GET SUMMARY
+# ===================================================================
+
+
+def get_summary(session_state: dict, group_by: str) -> dict:
+    """Summarize accrual results grouped by a dimension.
+
+    Args:
+        session_state: Dict containing "accrual_results" from calculate_accruals.
+        group_by: Dimension to group by — "project_type", "business_unit", or "phase".
+
+    Returns:
+        dict with "summary" (list of group dicts) and "grand_total" keys.
+    """
+    accrual_results = session_state.get("accrual_results", [])
+
+    # Build lookup dicts for grouping dimensions
+    wbs_df = session_state.get("wbs_data")
+    vow_df = session_state.get("vow_data")
+
+    wbs_lookup = {}
+    if wbs_df is not None:
+        for _, row in wbs_df.iterrows():
+            wbs_lookup[row["wbs_element"]] = {
+                "project_type": row["project_type"],
+                "business_unit": row["business_unit"],
+            }
+
+    vow_lookup = {}
+    if vow_df is not None:
+        for _, row in vow_df.iterrows():
+            vow_lookup[row["wbs_element"]] = {"phase": row["phase"]}
+
+    # Group accrual results
+    groups: dict = {}
+    grand_total = 0.0
+
+    for rec in accrual_results:
+        if rec["gross_accrual"] is None:
+            continue
+
+        wbs = rec["wbs_element"]
+        accrual = rec["gross_accrual"]
+        has_exception = 1 if rec["exception_type"] else 0
+
+        # Determine group value
+        if group_by == "phase":
+            info = vow_lookup.get(wbs, {})
+            group_value = info.get("phase", "Unknown")
+        else:
+            info = wbs_lookup.get(wbs, {})
+            group_value = info.get(group_by, "Unknown")
+
+        if group_value not in groups:
+            groups[group_value] = {
+                "total_accrual": 0.0,
+                "wbs_count": 0,
+                "exception_count": 0,
+            }
+
+        groups[group_value]["total_accrual"] += accrual
+        groups[group_value]["wbs_count"] += 1
+        groups[group_value]["exception_count"] += has_exception
+        grand_total += accrual
+
+    # Build summary list with pct_of_total
+    summary = []
+    for group_value, data in sorted(groups.items()):
+        pct = data["total_accrual"] / grand_total if grand_total != 0 else 0
+        summary.append({
+            "group_value": group_value,
+            "total_accrual": data["total_accrual"],
+            "wbs_count": data["wbs_count"],
+            "avg_accrual": data["total_accrual"] / data["wbs_count"] if data["wbs_count"] > 0 else 0,
+            "exception_count": data["exception_count"],
+            "pct_of_total": round(pct, 4),
+        })
+
+    return {
+        "summary": summary,
+        "grand_total": grand_total,
+    }
+
+
+# ===================================================================
+# 11. GENERATE OUTLOOK — Linear by Day allocation
+# ===================================================================
+
+
+def _allocate_linear(phase_start: date, phase_end: date, total_cost: float,
+                     month_start: date, month_end: date) -> float:
+    """Allocate cost linearly across days, returning the portion in the given month.
+
+    Args:
+        phase_start: Start date of the phase.
+        phase_end: End date of the phase.
+        total_cost: Total cost for the phase.
+        month_start: First day of the target month.
+        month_end: Last day of the target month.
+
+    Returns:
+        The allocated cost for the overlap period, rounded to 2 decimal places.
+    """
+    if phase_end < month_start or phase_start > month_end:
+        return 0.0
+    total_days = (phase_end - phase_start).days + 1
+    if total_days <= 0:
+        return 0.0
+    overlap_start = max(phase_start, month_start)
+    overlap_end = min(phase_end, month_end)
+    overlap_days = (overlap_end - overlap_start).days + 1
+    if overlap_days <= 0:
+        return 0.0
+    return round(total_cost / total_days * overlap_days, 2)
+
+
+def generate_outlook(session_state: dict, months_forward: int) -> dict:
+    """Generate a forward-looking accrual outlook using linear-by-day allocation.
+
+    Uses the drill_schedule.csv to project future accruals based on planned
+    phase dates and estimated costs. Reference date is hardcoded to 2026-01.
+
+    Args:
+        session_state: Session state dict (used for consistency; schedule is
+            loaded directly from CSV).
+        months_forward: Number of months to project forward from 2026-02.
+
+    Returns:
+        dict with "outlook", "total_outlook", "wells_in_schedule",
+        and "schedule_detail" keys.
+    """
+    schedule_df = data_loader.load_drill_schedule()
+
+    # --- Load WBS master for well names ---
+    wbs_df = session_state.get("wbs_data")
+    wbs_name_lookup = {}
+    if wbs_df is not None:
+        for _, row in wbs_df.iterrows():
+            wbs_name_lookup[row["wbs_element"]] = row["well_name"]
+
+    # --- Build schedule detail ---
+    schedule_detail = []
+    for _, row in schedule_df.iterrows():
+        schedule_detail.append({
+            "wbs_element": row["wbs_element"],
+            "well_name": wbs_name_lookup.get(row["wbs_element"], "Unknown"),
+            "planned_phase": row["planned_phase"],
+            "planned_date": str(row["planned_date"].date()) if hasattr(row["planned_date"], "date") else str(row["planned_date"]),
+            "estimated_cost": float(row["estimated_cost"]),
+        })
+
+    wells_in_schedule = len(schedule_df["wbs_element"].unique())
+
+    # --- Build phase spans per well ---
+    # Group schedule by wbs_element
+    well_phases = {}
+    for _, row in schedule_df.iterrows():
+        wbs = row["wbs_element"]
+        phase = row["planned_phase"]
+        pdate = row["planned_date"].date() if hasattr(row["planned_date"], "date") else row["planned_date"]
+        cost = float(row["estimated_cost"])
+        if wbs not in well_phases:
+            well_phases[wbs] = {}
+        well_phases[wbs][phase] = {"date": pdate, "cost": cost}
+
+    # Build allocatable spans:
+    # - Drilling: Spud → TD, cost = TD's estimated_cost
+    # - Completions: Frac Start → Frac End, cost = Frac End's estimated_cost
+    # - First Production: lump sum on that date (single day)
+    spans = []
+    for wbs, phases in well_phases.items():
+        # Drilling phase: Spud to TD
+        if "Spud" in phases and "TD" in phases:
+            spans.append({
+                "wbs": wbs,
+                "phase_name": "Drilling",
+                "start": phases["Spud"]["date"],
+                "end": phases["TD"]["date"],
+                "cost": phases["TD"]["cost"],
+            })
+        # Completions phase: Frac Start to Frac End
+        if "Frac Start" in phases and "Frac End" in phases:
+            spans.append({
+                "wbs": wbs,
+                "phase_name": "Completions",
+                "start": phases["Frac Start"]["date"],
+                "end": phases["Frac End"]["date"],
+                "cost": phases["Frac End"]["cost"],
+            })
+        # First Production: single day lump sum
+        if "First Production" in phases:
+            fp = phases["First Production"]
+            spans.append({
+                "wbs": wbs,
+                "phase_name": "First Production",
+                "start": fp["date"],
+                "end": fp["date"],
+                "cost": fp["cost"],
+            })
+
+    # --- Build future months ---
+    # Start from February 2026 (month after REFERENCE_DATE)
+    future_months = []
+    for i in range(months_forward):
+        # month offset: 0 → Feb 2026, 1 → Mar 2026, etc.
+        year = 2026
+        month = 2 + i
+        while month > 12:
+            month -= 12
+            year += 1
+        future_months.append((year, month))
+
+    # --- Allocate costs per month ---
+    outlook = []
+    total_outlook = 0.0
+
+    for year, month in future_months:
+        month_start = date(year, month, 1)
+        _, last_day = monthrange(year, month)
+        month_end = date(year, month, last_day)
+        month_label = f"{year}-{month:02d}"
+
+        month_accrual = 0.0
+        active_wells = set()
+        new_wells = set()
+        completing_phases = 0
+
+        for span in spans:
+            allocated = _allocate_linear(
+                span["start"], span["end"], span["cost"],
+                month_start, month_end,
+            )
+            if allocated > 0:
+                month_accrual += allocated
+                active_wells.add(span["wbs"])
+                # A well is "new" if its first phase starts in this month
+                if span["start"] >= month_start and span["start"] <= month_end:
+                    new_wells.add(span["wbs"])
+                # A phase completes if its end date falls in this month
+                if span["end"] >= month_start and span["end"] <= month_end:
+                    completing_phases += 1
+
+        month_accrual = round(month_accrual, 2)
+        total_outlook += month_accrual
+
+        outlook.append({
+            "month": month_label,
+            "expected_accrual": month_accrual,
+            "well_count": len(active_wells),
+            "new_wells_starting": len(new_wells),
+            "phases_completing": completing_phases,
+        })
+
+    total_outlook = round(total_outlook, 2)
+
+    return {
+        "outlook": outlook,
+        "total_outlook": total_outlook,
+        "wells_in_schedule": wells_in_schedule,
+        "schedule_detail": schedule_detail,
+    }

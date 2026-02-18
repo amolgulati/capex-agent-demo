@@ -4,7 +4,7 @@ Synthetic data generator for CapEx Gross Accrual Agent Demo (Phase 1).
 Produces 5 deterministic CSV files:
     - wbs_master.csv          (50 rows)
     - itd_extract.csv         (47 rows)
-    - vow_estimates.csv       (45 rows)
+    - vow_estimates.csv       (48 rows)
     - prior_period_accruals.csv (48 rows)
     - drill_schedule.csv      (60-80 rows)
 
@@ -30,7 +30,7 @@ ALL_WBS = [f"WBS-{i}" for i in range(1001, 1051)]  # 50 elements
 MISSING_ITD_WBS = {"WBS-1031", "WBS-1038", "WBS-1044"}  # absent from itd_extract
 ZERO_ITD_WBS = {"WBS-1047", "WBS-1048", "WBS-1049"}      # itd_amount = 0
 MISSING_VOW_ONLY = {"WBS-1015", "WBS-1042"}               # absent from vow_estimates only
-MISSING_VOW_ALL = MISSING_VOW_ONLY | MISSING_ITD_WBS      # 5 total absent from vow
+MISSING_VOW_ALL = MISSING_VOW_ONLY.copy()                  # only 2 absent from vow
 
 NEGATIVE_ACCRUAL_WBS = "WBS-1027"  # ITD > VOW
 LARGE_SWING_WBS = "WBS-1009"       # >30% swing vs prior
@@ -171,7 +171,7 @@ def generate_itd_extract(rng: random.Random, wbs_master: pd.DataFrame) -> pd.Dat
 
 
 # ---------------------------------------------------------------------------
-# 3. vow_estimates.csv — 45 rows (5 missing WBS)
+# 3. vow_estimates.csv — 48 rows (2 missing WBS)
 # ---------------------------------------------------------------------------
 
 def generate_vow_estimates(
@@ -179,7 +179,7 @@ def generate_vow_estimates(
     wbs_master: pd.DataFrame,
     itd_extract: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Generate vow_estimates.csv with exactly 45 rows."""
+    """Generate vow_estimates.csv with exactly 48 rows."""
 
     budget_map = dict(zip(wbs_master["wbs_element"], wbs_master["budget_amount"]))
     itd_map = dict(zip(itd_extract["wbs_element"], itd_extract["itd_amount"]))
@@ -189,9 +189,9 @@ def generate_vow_estimates(
         "T. Williams", "S. Brown", "D. Martinez", "L. Chen", "P. Wilson",
     ]
 
-    # WBS elements present: all except the 5 missing
+    # WBS elements present: all except the 2 missing
     vow_wbs_list = [w for w in ALL_WBS if w not in MISSING_VOW_ALL]
-    assert len(vow_wbs_list) == 45
+    assert len(vow_wbs_list) == 48
 
     # Force all 4 phases to appear
     forced_phases = list(phases)

@@ -8,7 +8,7 @@ creates the CSV files in capex-agent-demo/data/.
 CSV files under test:
     - wbs_master.csv          (50 rows)
     - itd_extract.csv         (47 rows)
-    - vow_estimates.csv       (45 rows)
+    - vow_estimates.csv       (48 rows)
     - prior_period_accruals.csv (48 rows)
     - drill_schedule.csv      (60-70 rows, max 80)
 """
@@ -38,7 +38,7 @@ ALL_WBS = [f"WBS-{i}" for i in range(1001, 1051)]  # WBS-1001 .. WBS-1050
 MISSING_ITD_WBS = {"WBS-1031", "WBS-1038", "WBS-1044"}
 ZERO_ITD_WBS = {"WBS-1047", "WBS-1048", "WBS-1049"}
 MISSING_VOW_ONLY = {"WBS-1015", "WBS-1042"}
-MISSING_VOW_ALL = MISSING_VOW_ONLY | MISSING_ITD_WBS  # 5 total
+MISSING_VOW_ALL = MISSING_VOW_ONLY.copy()  # only 2 absent from vow
 
 NEGATIVE_ACCRUAL_WBS = "WBS-1027"
 LARGE_SWING_WBS = "WBS-1009"
@@ -104,7 +104,7 @@ class TestRowCaps:
         assert len(itd_extract) == 47, f"Expected 47 rows, got {len(itd_extract)}"
 
     def test_vow_estimates_row_count(self, vow_estimates):
-        assert len(vow_estimates) == 45, f"Expected 45 rows, got {len(vow_estimates)}"
+        assert len(vow_estimates) == 48, f"Expected 48 rows, got {len(vow_estimates)}"
 
     def test_prior_period_row_count(self, prior_period):
         assert len(prior_period) == 48, f"Expected 48 rows, got {len(prior_period)}"
@@ -251,7 +251,7 @@ class TestVowEstimates:
         assert vow_estimates["wbs_element"].is_unique
 
     def test_missing_vow_wbs_absent(self, vow_estimates):
-        """All 5 Missing-VOW WBS elements must NOT appear in vow_estimates."""
+        """All 2 Missing-VOW WBS elements must NOT appear in vow_estimates."""
         present = set(vow_estimates["wbs_element"])
         overlap = MISSING_VOW_ALL & present
         assert overlap == set(), f"These should be absent: {overlap}"
@@ -408,15 +408,15 @@ class TestJoinGaps:
         assert gaps == MISSING_ITD_WBS, f"ITD gap WBS mismatch: {gaps}"
 
     def test_wbs_master_to_vow_matches(self, wbs_master, vow_estimates):
-        """wbs_master -> vow_estimates: 45 matches, 5 gaps."""
+        """wbs_master -> vow_estimates: 48 matches, 2 gaps."""
         master_wbs = set(wbs_master["wbs_element"])
         vow_wbs = set(vow_estimates["wbs_element"])
 
         matches = master_wbs & vow_wbs
         gaps = master_wbs - vow_wbs
 
-        assert len(matches) == 45, f"Expected 45 VOW matches, got {len(matches)}"
-        assert len(gaps) == 5, f"Expected 5 VOW gaps, got {len(gaps)}"
+        assert len(matches) == 48, f"Expected 48 VOW matches, got {len(matches)}"
+        assert len(gaps) == 2, f"Expected 2 VOW gaps, got {len(gaps)}"
         assert gaps == MISSING_VOW_ALL, f"VOW gap WBS mismatch: {gaps}"
 
     def test_itd_wbs_subset_of_master(self, wbs_master, itd_extract):
