@@ -536,3 +536,65 @@ class TestDollarAmounts:
     def test_prior_accrual_reasonable(self, prior_period):
         """Prior gross accrual should be within a reasonable range."""
         assert prior_period["prior_gross_accrual"].max() <= 15_000_000
+
+
+# ===================================================================
+# 11. DATA LOADER UTILITIES — verify utils/data_loader.py functions
+# ===================================================================
+
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from utils.data_loader import (  # noqa: E402
+    load_wbs_master,
+    load_itd,
+    load_vow,
+    load_prior_accruals,
+    load_drill_schedule,
+)
+
+
+class TestDataLoader:
+    """Verify that data loader utility functions work correctly."""
+
+    def test_load_wbs_master_all(self):
+        """load_wbs_master() returns all 50 rows by default."""
+        df = load_wbs_master()
+        assert len(df) == 50, f"Expected 50 rows, got {len(df)}"
+
+    def test_load_wbs_master_permian(self):
+        """load_wbs_master('Permian Basin') returns >= 30 rows, all Permian Basin."""
+        df = load_wbs_master("Permian Basin")
+        assert len(df) >= 30, f"Expected >= 30 Permian rows, got {len(df)}"
+        assert (df["business_unit"] == "Permian Basin").all(), (
+            "All rows should be Permian Basin"
+        )
+
+    def test_load_wbs_master_invalid_bu(self):
+        """load_wbs_master with a non-existent BU returns an empty DataFrame."""
+        df = load_wbs_master("NonExistent Basin")
+        assert len(df) == 0, f"Expected 0 rows for invalid BU, got {len(df)}"
+
+    def test_load_itd(self):
+        """load_itd() returns a DataFrame with an 'itd_amount' column."""
+        df = load_itd()
+        assert "itd_amount" in df.columns, "'itd_amount' column missing"
+
+    def test_load_vow(self):
+        """load_vow() returns a DataFrame with a 'vow_amount' column."""
+        df = load_vow()
+        assert "vow_amount" in df.columns, "'vow_amount' column missing"
+
+    def test_load_prior_accruals(self):
+        """load_prior_accruals() returns a DataFrame with 'prior_gross_accrual' column."""
+        df = load_prior_accruals()
+        assert "prior_gross_accrual" in df.columns, (
+            "'prior_gross_accrual' column missing"
+        )
+
+    def test_load_drill_schedule_date_parsing(self):
+        """load_drill_schedule() parses planned_date as datetime."""
+        df = load_drill_schedule()
+        assert pd.api.types.is_datetime64_any_dtype(df["planned_date"]), (
+            "planned_date should be datetime dtype"
+        )
