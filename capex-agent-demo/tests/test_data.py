@@ -74,6 +74,22 @@ def drill_schedule() -> pd.DataFrame:
 
 
 # ===================================================================
+# 0. FILE EXISTENCE — PRD Criterion 1: all 5 CSV files exist
+# ===================================================================
+
+
+class TestFilesExist:
+    """Verify all 5 CSV files were generated."""
+
+    @pytest.mark.parametrize("path", [
+        WBS_MASTER_PATH, ITD_EXTRACT_PATH, VOW_ESTIMATES_PATH,
+        PRIOR_PERIOD_PATH, DRILL_SCHEDULE_PATH,
+    ])
+    def test_csv_file_exists(self, path):
+        assert path.exists(), f"Missing CSV: {path.name}"
+
+
+# ===================================================================
 # 1. ROW CAPS — hard limits from the PRD
 # ===================================================================
 
