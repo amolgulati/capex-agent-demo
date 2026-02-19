@@ -159,32 +159,35 @@ with st.sidebar:
 
     st.divider()
 
-    # Downloads
+    # Downloads — only shown after the agent has run at least one tool
     st.subheader("Downloads")
+    if st.session_state.tools_called:
 
-    @st.cache_data
-    def _generate_excel():
-        return generate_close_package()
+        @st.cache_data
+        def _generate_excel():
+            return generate_close_package()
 
-    @st.cache_data
-    def _generate_csv():
-        result = generate_outlook_load_file()
-        return result["load_file"].to_csv(index=False)
+        @st.cache_data
+        def _generate_csv():
+            result = generate_outlook_load_file()
+            return result["load_file"].to_csv(index=False)
 
-    st.download_button(
-        label="Close Package (Excel)",
-        data=_generate_excel(),
-        file_name="capex_close_package_2026-01.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
-    st.download_button(
-        label="OneStream Load File (CSV)",
-        data=_generate_csv(),
-        file_name="onestream_load_2026-01.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
+        st.download_button(
+            label="Close Package (Excel)",
+            data=_generate_excel(),
+            file_name="capex_close_package_2026-01.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+        st.download_button(
+            label="OneStream Load File (CSV)",
+            data=_generate_csv(),
+            file_name="onestream_load_2026-01.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    else:
+        st.caption("Available after the agent runs.")
 
     st.divider()
 

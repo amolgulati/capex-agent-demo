@@ -15,14 +15,14 @@
 |-------|--------|-----------|--------------|
 | **Phase 1 — Data Foundation** | DONE | `data/*.csv`, `utils/data_loader.py`, `tests/test_data.py` | 2026-02-18 |
 | **Phase 2 — Core Agent Tools** | DONE | `agent/tools.py`, `agent/tool_definitions.py`, `tests/test_tools.py` | 2026-02-18 |
-| **Phase 3 — Agent Orchestration** | NOT STARTED | `agent/orchestrator.py`, `agent/prompts.py`, `cli.py` | — |
-| **Phase 4 — Streamlit UI** | NOT STARTED | `app.py`, `.streamlit/config.toml`, `utils/excel_export.py` | — |
-| **Phase 5 — Polish & Demo-Ready** | NOT STARTED | Deployment, Excel formatting, backup video | — |
+| **Phase 3 — Agent Orchestration** | DONE | `agent/orchestrator.py`, `agent/prompts.py`, `cli.py` | 2026-02-18 |
+| **Phase 4 — Streamlit UI** | DONE | `app.py`, `.streamlit/config.toml`, `utils/excel_export.py` | 2026-02-18 |
+| **Phase 5 — Polish & Demo-Ready** | IN PROGRESS | Streaming, breadcrumbs, banner, polish fixes | 2026-02-18 |
 
 **Status values:** `NOT STARTED` · `IN PROGRESS` · `BLOCKED — [reason]` · `DONE`
 
-**Current focus:** Phase 3
-**Next action:** Build agent orchestrator with Claude API integration in `agent/orchestrator.py`
+**Current focus:** Phase 5 — Polish & Demo-Ready
+**Next action:** Fix remaining CRITICAL and HIGH items from deep-dive review (see `docs/plans/fix-list.md`)
 **Known blockers:** None
 
 ---
@@ -1612,6 +1612,69 @@ HOW TO USE THIS LOG:
 - `capex-agent-demo/tests/test_tools.py` — 72 tests for all tools + definitions
 - `capex-agent-demo/docs/plans/2026-02-18-phase2-core-agent-tools-design.md` — Design doc
 - `capex-agent-demo/docs/plans/2026-02-18-phase2-core-agent-tools.md` — Implementation plan
+
+#### Session 3 — 2026-02-18
+**Duration:** ~2 hours
+**Phase worked on:** Phases 3 & 4 — Agent Orchestration & Streamlit UI
+
+**What was done:**
+- Refactored data model: consolidated 5 CSV files down to 2 (wide wbs_master table + drill_schedule)
+- Rebuilt all 9 agent tool functions to work with the new data model (direct CSV reads, no session state)
+- Replaced `missing_itd_handling` parameter with WI% mismatch as the clarifying question trigger
+- Built `agent/orchestrator.py` with streaming Claude API integration (`messages.stream()`)
+- Created `agent/prompts.py` with system prompt including `ask_user_question` tool for clarifying questions
+- Built `cli.py` for interactive terminal testing
+- Built `app.py` Streamlit UI with chat interface, tool breadcrumbs, clarifying question widget (radio + Continue button)
+- Created `.streamlit/config.toml` with dark theme for projector readability
+- Created `utils/excel_export.py` for Close Package Excel download
+- Added ClarifyEvent to orchestrator for pause/resume on clarifying questions
+- Summarized `generate_outlook_load_file` results to ~600 tokens instead of sending all 72 rows (~4,100 tokens)
+- 58 tests passing (test suite adapted to new data model)
+
+**Acceptance criteria completed this session:**
+- All Phase 3 and Phase 4 criteria
+
+**What to do next:**
+- Phase 5 polish: fix remaining items from deep-dive review (`docs/plans/fix-list.md`)
+
+**Blockers / Issues:**
+- None
+
+**Files created/modified:**
+- `capex-agent-demo/agent/orchestrator.py` — Streaming agent loop with tool dispatch and ClarifyEvent
+- `capex-agent-demo/agent/prompts.py` — System prompt with ask_user_question tool
+- `capex-agent-demo/agent/tools.py` — Rebuilt 9 tools for new data model
+- `capex-agent-demo/agent/tool_definitions.py` — Updated Claude API tool schemas
+- `capex-agent-demo/cli.py` — Interactive CLI for testing
+- `capex-agent-demo/app.py` — Streamlit UI with chat, breadcrumbs, clarifying questions
+- `capex-agent-demo/.streamlit/config.toml` — Dark theme config
+- `capex-agent-demo/utils/excel_export.py` — Excel close package generator
+- `capex-agent-demo/data/generate_synthetic_data.py` — Updated for 2-file data model
+
+#### Session 4 — 2026-02-18
+**Duration:** ~30 min
+**Phase worked on:** Phase 5 — Polish (MEDIUM items from fix-list.md)
+
+**What was done:**
+- Removed dead `utils/formatting.py` (format_dollar was never imported by any code)
+- Bumped `max_tokens` from 4096 to 8192 in orchestrator to avoid truncation on large tables
+- Verified `.env.example` has correct content (no changes needed)
+- Deferred sidebar download generation until after agent runs first tool (avoids computation at page load)
+- Updated PRD build dashboard (Phases 3-5 marked correctly)
+- Added session log entries for Sessions 3-4
+
+**What to do next:**
+- Fix CRITICAL items: streaming, breadcrumb persistence
+- Fix HIGH items: noisy double-exception on WBS-1005
+
+**Blockers / Issues:**
+- None
+
+**Files created/modified:**
+- `capex-agent-demo/utils/formatting.py` — Deleted (dead code)
+- `capex-agent-demo/agent/orchestrator.py` — max_tokens 4096 → 8192
+- `capex-agent-demo/app.py` — Sidebar downloads deferred until agent runs
+- `planning/prd.md` — Updated build dashboard and session log
 
 <!--
 ### Session Template (copy and fill in):

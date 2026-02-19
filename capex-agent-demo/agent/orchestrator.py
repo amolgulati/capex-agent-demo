@@ -188,7 +188,7 @@ class AgentOrchestrator:
             try:
                 with self.client.messages.stream(
                     model=self.model,
-                    max_tokens=4096,
+                    max_tokens=8192,
                     system=SYSTEM_PROMPT,
                     tools=TOOL_DEFINITIONS,
                     messages=messages,
