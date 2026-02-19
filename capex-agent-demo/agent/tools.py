@@ -1,7 +1,13 @@
-"""Agent tools for the 3-step capex close process."""
+"""Agent tools for the 3-step capex close process.
+
+Core calculation functions (calculate_accruals, calculate_net_down,
+calculate_outlook) are cached so that composite tools like get_exceptions,
+get_close_summary, and generate_journal_entry don't redundantly recompute.
+"""
 
 import sys
 from datetime import date, timedelta
+from functools import lru_cache
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -38,6 +44,7 @@ CATEGORY_PHASE_MAP = {
 REFERENCE_DATE = date(2026, 1, 1)
 
 
+@lru_cache(maxsize=8)
 def calculate_accruals(business_unit: str = "all") -> dict:
     """Step 1: Calculate gross and net accruals per well per category.
 
@@ -111,6 +118,7 @@ def calculate_accruals(business_unit: str = "all") -> dict:
     return {"accruals": accruals, "summary": summary, "exceptions": exceptions}
 
 
+@lru_cache(maxsize=8)
 def calculate_net_down(business_unit: str = "all") -> dict:
     """Step 2: Calculate WI% net-down adjustments.
 
@@ -152,6 +160,7 @@ def calculate_net_down(business_unit: str = "all") -> dict:
     return {"adjustments": adjustments, "summary": summary}
 
 
+@lru_cache(maxsize=8)
 def calculate_outlook(business_unit: str = "all") -> dict:
     """Step 3: Calculate future outlook per well per category.
 
@@ -480,3 +489,12 @@ def get_close_summary(business_unit: str = "all") -> dict:
                        "well_count", "exception_count"]}
 
     return {"by_business_unit": by_bu, "grand_totals": grand}
+
+
+def clear_caches():
+    """Clear all calculation caches (and underlying data caches)."""
+    from utils.data_loader import clear_caches as clear_data_caches
+    calculate_accruals.cache_clear()
+    calculate_net_down.cache_clear()
+    calculate_outlook.cache_clear()
+    clear_data_caches()

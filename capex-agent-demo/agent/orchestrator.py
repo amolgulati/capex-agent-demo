@@ -49,12 +49,49 @@ def _df_to_dict(df: pd.DataFrame) -> dict:
 
 
 def _outlook_to_dict(result: dict) -> dict:
-    """Convert outlook load file result (contains a DataFrame) to JSON-safe dict."""
+    """Convert outlook load file to a compact summary for Claude's context.
+
+    Instead of returning all 72 rows (~4,100 tokens), returns aggregated
+    totals by month and by category plus the top 10 wells — roughly ~600 tokens.
+    """
     df = result["load_file"]
+    months = result["months"]
+
+    # Monthly totals across all wells/categories
+    monthly_totals = {m: round(float(df[m].sum()), 2) for m in months}
+
+    # Per-category breakdown
+    by_category = {}
+    for cat in df["cost_category"].unique():
+        cat_df = df[df["cost_category"] == cat]
+        by_category[cat] = {
+            "total": round(float(cat_df["total"].sum()), 2),
+            "monthly": {m: round(float(cat_df[m].sum()), 2) for m in months},
+        }
+
+    # Top 10 wells by total future outlook
+    well_totals = (
+        df.groupby(["wbs_element", "well_name"])["total"]
+        .sum()
+        .reset_index()
+        .sort_values("total", ascending=False)
+        .head(10)
+    )
+    top_wells = [
+        {"wbs_element": r["wbs_element"], "well_name": r["well_name"],
+         "total": round(float(r["total"]), 2)}
+        for _, r in well_totals.iterrows()
+    ]
+
     return {
-        "load_file": df.to_dict(orient="records"),
-        "months": result["months"],
+        "months": months,
         "row_count": len(df),
+        "well_count": int(df["wbs_element"].nunique()),
+        "grand_total": round(float(df["total"].sum()), 2),
+        "monthly_totals": monthly_totals,
+        "by_category": by_category,
+        "top_10_wells": top_wells,
+        "note": "Summary view. Full per-well detail available in the Excel download.",
     }
 
 
