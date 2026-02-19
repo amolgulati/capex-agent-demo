@@ -55,13 +55,19 @@ st.markdown("""
 
     /* Tool breadcrumb style */
     .tool-breadcrumb {
-        background-color: #1E2329;
-        border-left: 3px solid #4CAF50;
-        padding: 6px 12px;
-        margin: 4px 0;
-        border-radius: 0 4px 4px 0;
-        font-size: 0.85em;
-        color: #aaa;
+        background: linear-gradient(135deg, #1a3a1a 0%, #243028 100%);
+        border-left: 4px solid #4CAF50;
+        padding: 8px 14px;
+        margin: 6px 0;
+        border-radius: 0 6px 6px 0;
+        font-size: 0.9em;
+        color: #e0e0e0;
+        font-weight: 500;
+        animation: breadcrumb-appear 0.3s ease-out;
+    }
+    @keyframes breadcrumb-appear {
+        from { opacity: 0; transform: translateX(-8px); }
+        to { opacity: 1; transform: translateX(0); }
     }
 
     /* Streamlit chat message tweaks */
@@ -294,6 +300,7 @@ def _run_agent():
                         f'<div class="tool-breadcrumb">🔧 {display_name}</div>',
                         unsafe_allow_html=True,
                     )
+                    st.toast(f"🔧 {display_name}")
                 elif isinstance(event, TextEvent):
                     full_response += event.text
                     response_container.markdown(full_response + "▌")
