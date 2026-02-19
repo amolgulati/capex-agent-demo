@@ -14,15 +14,15 @@
 | Phase | Status | Key Files | Last Updated |
 |-------|--------|-----------|--------------|
 | **Phase 1 — Data Foundation** | DONE | `data/*.csv`, `utils/data_loader.py`, `tests/test_data.py` | 2026-02-18 |
-| **Phase 2 — Core Agent Tools** | NOT STARTED | `agent/tools.py`, `agent/tool_definitions.py`, `tests/test_tools.py` | — |
+| **Phase 2 — Core Agent Tools** | DONE | `agent/tools.py`, `agent/tool_definitions.py`, `tests/test_tools.py` | 2026-02-18 |
 | **Phase 3 — Agent Orchestration** | NOT STARTED | `agent/orchestrator.py`, `agent/prompts.py`, `cli.py` | — |
 | **Phase 4 — Streamlit UI** | NOT STARTED | `app.py`, `.streamlit/config.toml`, `utils/excel_export.py` | — |
 | **Phase 5 — Polish & Demo-Ready** | NOT STARTED | Deployment, Excel formatting, backup video | — |
 
 **Status values:** `NOT STARTED` · `IN PROGRESS` · `BLOCKED — [reason]` · `DONE`
 
-**Current focus:** Phase 2
-**Next action:** Build the 9 agent tool functions in `agent/tools.py` starting with P0 core tools
+**Current focus:** Phase 3
+**Next action:** Build agent orchestrator with Claude API integration in `agent/orchestrator.py`
 **Known blockers:** None
 
 ---
@@ -1251,9 +1251,9 @@ capex-agent-demo/
 
 ### Phase 2 — Core Agent Tools
 
-**Status:** `NOT STARTED`
-**Started:** —
-**Completed:** —
+**Status:** `DONE`
+**Started:** 2026-02-18
+**Completed:** 2026-02-18
 
 **Goal:** Build the 9 Python tool functions that the agent will call. No UI, no LLM. Each function is independently testable by calling it directly.
 
@@ -1284,24 +1284,24 @@ Build and test tools in this order. The first group is P0 (demo-critical); the s
 **Acceptance Criteria:**
 
 *P0 — Core tools:*
-- [ ] 1. `load_wbs_master("Permian Basin")` returns dict with ~35 WBS elements, correct schema
-- [ ] 2. `load_wbs_master("all")` returns dict with 50 WBS elements
-- [ ] 3. `load_itd([list of 47 WBS IDs])` returns dict with 44 matched, 3 unmatched, 3 zero-ITD
-- [ ] 4. `load_vow([list of 47 WBS IDs])` returns dict with 42-45 matched, unmatched list
-- [ ] 5. `calculate_accruals("use_vow_as_accrual")` returns correct gross accruals and detects all 5 exception types
-- [ ] 6. `calculate_accruals("exclude_and_flag")` excludes missing-ITD WBS from total
-- [ ] 7. `get_exceptions("all")` returns all exceptions with correct severity assignments
-- [ ] 8. `get_exceptions("high")` returns only HIGH severity exceptions
-- [ ] 9. `get_accrual_detail("WBS-1027")` returns the negative accrual detail with ITD > VOW
+- [x] 1. `load_wbs_master("Permian Basin")` returns dict with ~35 WBS elements, correct schema
+- [x] 2. `load_wbs_master("all")` returns dict with 50 WBS elements
+- [x] 3. `load_itd([list of 47 WBS IDs])` returns dict with 44 matched, 3 unmatched, 3 zero-ITD
+- [x] 4. `load_vow([list of 47 WBS IDs])` returns dict with 42-45 matched, unmatched list
+- [x] 5. `calculate_accruals("use_vow_as_accrual")` returns correct gross accruals and detects all 5 exception types
+- [x] 6. `calculate_accruals("exclude_and_flag")` excludes missing-ITD WBS from total
+- [x] 7. `get_exceptions("all")` returns all exceptions with correct severity assignments
+- [x] 8. `get_exceptions("high")` returns only HIGH severity exceptions
+- [x] 9. `get_accrual_detail("WBS-1027")` returns the negative accrual detail with ITD > VOW
 
 *P1/P2 — Extended tools:*
-- [ ] 10. `generate_net_down_entry()` returns correct net-down = current - prior for each WBS
-- [ ] 11. `generate_outlook(3)` returns 3 months of projected accruals from drill schedule
-- [ ] 12. `get_summary("business_unit")` returns accruals grouped by BU with correct totals
+- [x] 10. `generate_net_down_entry()` returns correct net-down = current - prior for each WBS
+- [x] 11. `generate_outlook(3)` returns 3 months of projected accruals from drill schedule
+- [x] 12. `get_summary("business_unit")` returns accruals grouped by BU with correct totals
 
 *Infrastructure:*
-- [ ] 13. `tool_definitions.py` contains valid Claude API tool schemas for all 9 tools
-- [ ] 14. `python tests/test_tools.py` passes all assertions
+- [x] 13. `tool_definitions.py` contains valid Claude API tool schemas for all 9 tools
+- [x] 14. `python tests/test_tools.py` passes all assertions
 
 **Hand-off to Phase 3:** Working tool functions that can be called directly from Python, plus Claude-compatible tool definitions.
 
@@ -1578,6 +1578,40 @@ HOW TO USE THIS LOG:
 - `capex-agent-demo/utils/data_loader.py` — CSV loading functions
 - `capex-agent-demo/tests/test_data.py` — 64 validation tests
 - `capex-agent-demo/requirements.txt` — pandas, openpyxl, pytest
+
+#### Session 2 — 2026-02-18
+**Duration:** ~1.5 hours
+**Phase worked on:** Phase 2 — Core Agent Tools
+
+**What was done:**
+- Built all 9 agent tool functions in `agent/tools.py` using TDD (tests first)
+- P0 tools: load_wbs_master, load_itd, load_vow, calculate_accruals, get_exceptions, get_accrual_detail
+- P1/P2 tools: generate_net_down_entry, get_summary, generate_outlook
+- Created `utils/formatting.py` with dollar formatting helper
+- Created `agent/tool_definitions.py` with Claude API JSON schemas for all 9 tools
+- All tools use session_state dict pattern for sharing data between calls
+- calculate_accruals detects all 5 exception types with correct severities
+- generate_outlook implements Linear by Day allocation with month-boundary handling
+- 72 new tests in test_tools.py, 136 total tests passing (64 Phase 1 + 72 Phase 2)
+
+**Acceptance criteria completed this session:**
+- All 14 Phase 2 criteria checked off (AC 1-14)
+
+**What to do next:**
+- Start Phase 3: Build agent orchestrator with Claude API integration
+- Create `agent/orchestrator.py`, `agent/prompts.py`, `cli.py`
+- Wire up tool_use loop with streaming
+
+**Blockers / Issues:**
+- None
+
+**Files created/modified:**
+- `capex-agent-demo/agent/tools.py` — 9 tool functions (~370 lines)
+- `capex-agent-demo/agent/tool_definitions.py` — Claude API tool schemas
+- `capex-agent-demo/utils/formatting.py` — Dollar formatting helper
+- `capex-agent-demo/tests/test_tools.py` — 72 tests for all tools + definitions
+- `capex-agent-demo/docs/plans/2026-02-18-phase2-core-agent-tools-design.md` — Design doc
+- `capex-agent-demo/docs/plans/2026-02-18-phase2-core-agent-tools.md` — Implementation plan
 
 <!--
 ### Session Template (copy and fill in):
