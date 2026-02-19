@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 from agent.orchestrator import (
     AgentOrchestrator,
+    ClarifyEvent,
     DoneEvent,
     ErrorEvent,
     TextEvent,
@@ -82,6 +83,8 @@ if "tools_called" not in st.session_state:
     st.session_state.tools_called = []
 if "run_agent" not in st.session_state:
     st.session_state.run_agent = False
+if "pending_question" not in st.session_state:
+    st.session_state.pending_question = None  # {question, options, tool_use_id, partial_response}
 
 TOOL_DISPLAY_NAMES = {
     "load_wbs_master": "Loading WBS Master Data",
@@ -174,6 +177,7 @@ with st.sidebar:
         st.session_state.api_messages = []
         st.session_state.tools_called = []
         st.session_state.run_agent = False
+        st.session_state.pending_question = None
         st.rerun()
 
 # ---------------------------------------------------------------------------
@@ -186,20 +190,62 @@ st.caption("AI-powered capital expenditure close process — January 2026")
 # Display message history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
+        if msg.get("breadcrumbs"):
+            for bc in msg["breadcrumbs"]:
+                st.markdown(
+                    f'<div class="tool-breadcrumb">🔧 {bc}</div>',
+                    unsafe_allow_html=True,
+                )
         st.markdown(msg["content"])
 
 # ---------------------------------------------------------------------------
-# Chat input
+# Clarifying question widget (rendered when agent is paused)
 # ---------------------------------------------------------------------------
 
-if prompt := st.chat_input("Ask the agent to run the monthly close..."):
-    # Display user message
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    st.session_state.api_messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+if st.session_state.pending_question:
+    pq = st.session_state.pending_question
 
-    # Run agent
+    with st.chat_message("assistant"):
+        # Show the partial response text the agent produced before asking
+        if pq.get("partial_response"):
+            st.markdown(pq["partial_response"])
+
+        # Render interactive widget
+        st.divider()
+        st.markdown("**🤔 The agent needs your input:**")
+        st.markdown(pq["question"])
+        choice = st.radio(
+            "Select an option:",
+            pq["options"],
+            key="clarify_radio",
+            label_visibility="collapsed",
+        )
+        if st.button("Continue", type="primary", key="clarify_continue"):
+            # Append tool_result to api_messages
+            st.session_state.api_messages.append({
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": pq["tool_use_id"],
+                    "content": choice,
+                }],
+            })
+            # Store the question + answer in display messages
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": f"{pq.get('partial_response', '')}\n\n---\n**🤔 {pq['question']}**\n\n> You selected: **{choice}**",
+            })
+            st.session_state.pending_question = None
+            st.session_state.run_agent = True
+            st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Agent runner (handles both fresh input and resumed runs)
+# ---------------------------------------------------------------------------
+
+def _run_agent():
+    """Run the agent and process events."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         st.error("ANTHROPIC_API_KEY not set. Create a .env file with your key.")
@@ -212,12 +258,14 @@ if prompt := st.chat_input("Ask the agent to run the monthly close..."):
         response_container = st.empty()
         breadcrumb_container = st.container()
         full_response = ""
+        breadcrumbs = []
 
         try:
             for event in agent.run(st.session_state.api_messages):
                 if isinstance(event, ToolCallEvent):
                     st.session_state.tools_called.append(event.tool_name)
                     display_name = TOOL_DISPLAY_NAMES.get(event.tool_name, event.tool_name)
+                    breadcrumbs.append(display_name)
                     breadcrumb_container.markdown(
                         f'<div class="tool-breadcrumb">🔧 {display_name}</div>',
                         unsafe_allow_html=True,
@@ -225,6 +273,23 @@ if prompt := st.chat_input("Ask the agent to run the monthly close..."):
                 elif isinstance(event, TextEvent):
                     full_response += event.text
                     response_container.markdown(full_response + "▌")
+                elif isinstance(event, ClarifyEvent):
+                    # Agent is asking a clarifying question — pause
+                    response_container.markdown(full_response)
+                    st.session_state.pending_question = {
+                        "question": event.question,
+                        "options": event.options,
+                        "tool_use_id": event.tool_use_id,
+                        "partial_response": full_response,
+                    }
+                    # Store breadcrumbs with partial response
+                    if full_response or breadcrumbs:
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": full_response,
+                            "breadcrumbs": breadcrumbs,
+                        })
+                    st.rerun()
                 elif isinstance(event, DoneEvent):
                     response_container.markdown(full_response)
                 elif isinstance(event, ErrorEvent):
@@ -233,4 +298,24 @@ if prompt := st.chat_input("Ask the agent to run the monthly close..."):
             st.error(f"Agent error: {e}")
 
     if full_response:
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": full_response,
+            "breadcrumbs": breadcrumbs,
+        })
+
+
+# ---------------------------------------------------------------------------
+# Chat input
+# ---------------------------------------------------------------------------
+
+if prompt := st.chat_input("Ask the agent to run the monthly close..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.session_state.api_messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    _run_agent()
+
+elif st.session_state.run_agent:
+    st.session_state.run_agent = False
+    _run_agent()
