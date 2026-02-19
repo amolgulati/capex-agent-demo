@@ -329,3 +329,151 @@ def generate_outlook_load_file(
 
     load_df = pd.DataFrame(rows)
     return {"load_file": load_df, "months": months}
+
+
+# ---------------------------------------------------------------------------
+# Supporting tools
+# ---------------------------------------------------------------------------
+
+def _count_by(items: list, key: str) -> dict:
+    counts = {}
+    for item in items:
+        v = item.get(key, "Unknown")
+        counts[v] = counts.get(v, 0) + 1
+    return counts
+
+
+def get_exceptions(
+    business_unit: str = "all",
+    severity: str = "all",
+) -> dict:
+    """Get all exceptions from all 3 steps, optionally filtered by severity."""
+    accrual_result = calculate_accruals(business_unit)
+    net_down_result = calculate_net_down(business_unit)
+    outlook_result = calculate_outlook(business_unit)
+
+    all_exceptions = (
+        accrual_result["exceptions"]
+        + [{"wbs_element": a["wbs_element"], "well_name": a.get("well_name", ""),
+            "exception_type": "WI% Mismatch", "severity": "MEDIUM",
+            "detail": f"System WI={a['system_wi_pct']:.0%} vs Actual WI={a['actual_wi_pct']:.0%}, "
+                      f"adjustment=${a['net_down_adjustment']:,.0f}"}
+           for a in net_down_result["adjustments"]]
+        + outlook_result["exceptions"]
+    )
+
+    if severity != "all":
+        all_exceptions = [e for e in all_exceptions if e["severity"] == severity]
+
+    return {
+        "exceptions": all_exceptions,
+        "count": len(all_exceptions),
+        "by_severity": _count_by(all_exceptions, "severity"),
+        "by_type": _count_by(all_exceptions, "exception_type"),
+    }
+
+
+def get_well_detail(wbs_element: str) -> dict:
+    """Full waterfall detail for a single well: accrual -> net-down -> outlook."""
+    wbs_df = load_wbs_master()
+    row = wbs_df[wbs_df["wbs_element"] == wbs_element]
+    if row.empty:
+        return {"error": f"WBS element {wbs_element} not found"}
+    row = row.iloc[0]
+
+    detail = {
+        "wbs_element": row["wbs_element"],
+        "well_name": row["well_name"],
+        "business_unit": row["business_unit"],
+        "status": row["status"],
+        "wi_pct": row["wi_pct"],
+        "system_wi_pct": row["system_wi_pct"],
+    }
+
+    total_gross = 0
+    total_net = 0
+    total_system_cost = 0
+    total_future = 0
+
+    for cat in COST_CATEGORIES:
+        vow = row[f"{cat}_vow"]
+        itd = row[f"{cat}_itd"]
+        gross = vow - itd
+        net = gross * row["wi_pct"]
+        in_system = vow * row["wi_pct"]
+        ops = row[f"{cat}_ops_budget"]
+        future = ops - in_system
+
+        detail[f"{cat}_itd"] = itd
+        detail[f"{cat}_vow"] = vow
+        detail[f"{cat}_gross_accrual"] = gross
+        detail[f"{cat}_net_accrual"] = net
+        detail[f"{cat}_ops_budget"] = ops
+        detail[f"{cat}_future_outlook"] = future
+
+        total_gross += gross
+        total_net += net
+        total_system_cost += vow
+        total_future += future
+
+    wi_discrepancy = row["system_wi_pct"] - row["wi_pct"]
+    net_down_adj = total_system_cost * wi_discrepancy
+
+    detail["total_gross_accrual"] = total_gross
+    detail["total_net_accrual"] = total_net
+    detail["net_down_adjustment"] = net_down_adj
+    detail["total_in_system"] = total_system_cost * row["wi_pct"]
+    detail["total_future_outlook"] = total_future
+    detail["prior_gross_accrual"] = row["prior_gross_accrual"]
+
+    return detail
+
+
+def generate_journal_entry(business_unit: str = "all") -> dict:
+    """Generate the net-down + accrual journal entry for GL posting."""
+    accrual_result = calculate_accruals(business_unit)
+    net_down_result = calculate_net_down(business_unit)
+
+    total_net_accrual = accrual_result["summary"]["total_net_accrual"]
+    total_wi_adjustment = net_down_result["summary"]["total_net_down_adjustment"]
+    net_down_amount = total_net_accrual - total_wi_adjustment
+
+    journal_entry = {
+        "period": "2026-01",
+        "description": "Monthly CapEx Gross Accrual with WI% Net-Down",
+        "debit_account": "1410-000 CapEx WIP",
+        "credit_account": "2110-000 Accrued Liabilities",
+        "total_net_accrual": total_net_accrual,
+        "total_wi_adjustment": total_wi_adjustment,
+        "net_down_amount": net_down_amount,
+    }
+
+    return {"journal_entry": journal_entry}
+
+
+def get_close_summary(business_unit: str = "all") -> dict:
+    """Final close summary with all totals, grouped by BU."""
+    wbs_df = load_wbs_master()
+    bus = wbs_df["business_unit"].unique()
+
+    by_bu = {}
+    for bu in bus:
+        accruals = calculate_accruals(bu)
+        net_down = calculate_net_down(bu)
+        outlook = calculate_outlook(bu)
+
+        by_bu[bu] = {
+            "total_gross_accrual": accruals["summary"]["total_gross_accrual"],
+            "total_net_accrual": accruals["summary"]["total_net_accrual"],
+            "total_net_down_adjustment": net_down["summary"]["total_net_down_adjustment"],
+            "total_future_outlook": outlook["summary"]["total_future_outlook"],
+            "well_count": accruals["summary"]["well_count"],
+            "exception_count": accruals["summary"]["exception_count"] + outlook["summary"]["over_budget_count"],
+        }
+
+    grand = {k: sum(v[k] for v in by_bu.values())
+             for k in ["total_gross_accrual", "total_net_accrual",
+                       "total_net_down_adjustment", "total_future_outlook",
+                       "well_count", "exception_count"]}
+
+    return {"by_business_unit": by_bu, "grand_totals": grand}

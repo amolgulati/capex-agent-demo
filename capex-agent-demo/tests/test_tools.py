@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agent.tools import (
     calculate_accruals, calculate_net_down, calculate_outlook,
     generate_outlook_load_file,
+    get_exceptions, get_well_detail, generate_journal_entry, get_close_summary,
 )
 
 import pandas as pd
@@ -209,3 +210,55 @@ class TestGenerateOutlookLoadFile:
             assert abs(row_sum - row["total"]) < 1.0, (
                 f"Monthly values don't sum to total for {row['wbs_element']} {row['cost_category']}"
             )
+
+
+class TestGetExceptions:
+    def test_returns_all_exceptions(self):
+        result = get_exceptions()
+        assert "exceptions" in result
+        assert len(result["exceptions"]) >= 3  # at least neg accrual + swing + over budget
+
+    def test_filter_by_severity(self):
+        result = get_exceptions(severity="HIGH")
+        for exc in result["exceptions"]:
+            assert exc["severity"] == "HIGH"
+
+
+class TestGetWellDetail:
+    def test_returns_full_waterfall(self):
+        result = get_well_detail("WBS-1007")
+        assert result["wbs_element"] == "WBS-1007"
+        for key in ["total_gross_accrual", "total_net_accrual",
+                      "net_down_adjustment", "total_in_system", "total_future_outlook"]:
+            assert key in result, f"Missing: {key}"
+
+
+class TestGenerateJournalEntry:
+    def test_returns_journal_entry(self):
+        result = generate_journal_entry()
+        assert "journal_entry" in result
+        je = result["journal_entry"]
+        assert "debit_account" in je
+        assert "credit_account" in je
+        assert "net_down_amount" in je
+
+
+class TestGetCloseSummary:
+    def test_returns_summary_by_bu(self):
+        result = get_close_summary()
+        assert "by_business_unit" in result
+        assert "grand_totals" in result
+        totals = result["grand_totals"]
+        for key in ["total_gross_accrual", "total_net_accrual",
+                      "total_net_down_adjustment", "total_future_outlook"]:
+            assert key in totals
+
+
+class TestToolDefinitions:
+    def test_all_definitions_valid(self):
+        from agent.tool_definitions import TOOL_DEFINITIONS
+        assert len(TOOL_DEFINITIONS) == 9
+        for td in TOOL_DEFINITIONS:
+            assert "name" in td
+            assert "description" in td
+            assert "input_schema" in td

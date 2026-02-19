@@ -1,16 +1,17 @@
-"""Claude API tool schemas for the CapEx Gross Accrual Agent.
+"""Claude API tool schemas for the CapEx Close Agent.
 
 These definitions are sent to the Claude API as the `tools` parameter.
-The `session_state` parameter is NOT included — it's injected by the
-orchestrator when dispatching tool calls.
+9 tools covering the 3-step close workflow + supporting queries.
 """
 
 TOOL_DEFINITIONS = [
     {
         "name": "load_wbs_master",
         "description": (
-            "Load the WBS Master List (project registry) for a given business unit. "
-            "Returns WBS elements with project details, counts, and active status."
+            "Load the WBS Master List — the single wide table with all financial data "
+            "per well, including per-category (drill/comp/fb/hu) budget, ITD, VOW, "
+            "ops budget, and working interest percentages. This is the foundation for "
+            "all calculations."
         ),
         "input_schema": {
             "type": "object",
@@ -21,162 +22,171 @@ TOOL_DEFINITIONS = [
                         "Business unit to filter by. "
                         "Values: 'Permian Basin', 'DJ Basin', 'Powder River', or 'all'"
                     ),
+                    "default": "all",
                 }
             },
-            "required": ["business_unit"],
-        },
-    },
-    {
-        "name": "load_itd",
-        "description": (
-            "Load Incurred-to-Date (ITD) costs from the SAP extract for specified "
-            "WBS elements. Returns matched records, unmatched WBS (missing ITD), "
-            "and zero-ITD WBS."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "wbs_elements": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of WBS element IDs to retrieve ITD costs for.",
-                }
-            },
-            "required": ["wbs_elements"],
-        },
-    },
-    {
-        "name": "load_vow",
-        "description": (
-            "Load Value of Work (VOW) estimates from engineers for specified WBS "
-            "elements. Returns matched records and unmatched WBS (missing VOW "
-            "submissions)."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "wbs_elements": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of WBS element IDs to retrieve VOW estimates for.",
-                }
-            },
-            "required": ["wbs_elements"],
+            "required": [],
         },
     },
     {
         "name": "calculate_accruals",
         "description": (
-            "Calculate gross accruals (VOW - ITD) for all loaded WBS elements. "
-            "Detects exceptions: Missing ITD, Negative Accrual, Missing VOW, "
-            "Large Swing, Zero ITD. Requires load_wbs_master, load_itd, and "
-            "load_vow to have been called first."
+            "Step 1 of the close: Calculate gross and net accruals per well per "
+            "cost category. Gross Accrual = VOW - ITD. Net Accrual = Gross * WI%. "
+            "Detects Negative Accrual and Large Swing exceptions."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "missing_itd_handling": {
+                "business_unit": {
                     "type": "string",
-                    "enum": [
-                        "use_vow_as_accrual",
-                        "exclude_and_flag",
-                        "use_prior_period",
-                    ],
-                    "description": (
-                        "How to handle WBS elements with VOW but no ITD. "
-                        "'use_vow_as_accrual': treat missing ITD as $0. "
-                        "'exclude_and_flag': exclude from calculation. "
-                        "'use_prior_period': use prior period's ITD."
-                    ),
+                    "description": "Filter by business unit, or 'all'.",
+                    "default": "all",
                 }
             },
-            "required": ["missing_itd_handling"],
+            "required": [],
+        },
+    },
+    {
+        "name": "calculate_net_down",
+        "description": (
+            "Step 2 of the close: Calculate WI% net-down adjustments. For wells "
+            "where the system WI% differs from the actual WI%, computes: "
+            "Net-Down Adjustment = Total VOW * (System WI% - Actual WI%)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "business_unit": {
+                    "type": "string",
+                    "description": "Filter by business unit, or 'all'.",
+                    "default": "all",
+                }
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "calculate_outlook",
+        "description": (
+            "Step 3 of the close: Calculate future outlook per well per category. "
+            "Future Outlook = Ops Budget - (VOW * WI%). Negative outlook means "
+            "the well is over budget."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "business_unit": {
+                    "type": "string",
+                    "description": "Filter by business unit, or 'all'.",
+                    "default": "all",
+                }
+            },
+            "required": [],
         },
     },
     {
         "name": "get_exceptions",
         "description": (
-            "Retrieve the exception report from the most recent accrual "
-            "calculation. Can filter by severity level."
+            "Get all exceptions detected across all 3 close steps: Negative Accrual, "
+            "Large Swing, WI% Mismatch, and Over Budget. Can filter by severity."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
+                "business_unit": {
+                    "type": "string",
+                    "description": "Filter by business unit, or 'all'.",
+                    "default": "all",
+                },
                 "severity": {
                     "type": "string",
-                    "enum": ["all", "high", "medium", "low"],
-                    "description": "Filter exceptions by severity. 'all' returns everything.",
-                }
+                    "enum": ["all", "HIGH", "MEDIUM"],
+                    "description": "Filter exceptions by severity level.",
+                    "default": "all",
+                },
             },
-            "required": ["severity"],
+            "required": [],
         },
     },
     {
-        "name": "get_accrual_detail",
+        "name": "get_well_detail",
         "description": (
-            "Get detailed accrual breakdown for a single WBS element, including "
-            "VOW, ITD, gross accrual, prior period comparison, and any exceptions."
+            "Get full waterfall detail for a single well: ITD, VOW, gross/net accrual, "
+            "WI% net-down adjustment, and future outlook — all per cost category."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "wbs_element": {
                     "type": "string",
-                    "description": "The WBS element ID to look up (e.g., 'WBS-1027').",
+                    "description": "The WBS element ID to look up (e.g., 'WBS-1007').",
                 }
             },
             "required": ["wbs_element"],
         },
     },
     {
-        "name": "generate_net_down_entry",
+        "name": "generate_journal_entry",
         "description": (
-            "Generate the net-down journal entry comparing current gross accruals "
-            "to prior period. Returns debit/credit accounts, amounts, and per-WBS "
-            "detail."
+            "Generate the GL journal entry for the monthly close, combining net "
+            "accruals with WI% net-down adjustments. Returns debit/credit accounts "
+            "and amounts."
         ),
         "input_schema": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "business_unit": {
+                    "type": "string",
+                    "description": "Filter by business unit, or 'all'.",
+                    "default": "all",
+                }
+            },
             "required": [],
         },
     },
     {
-        "name": "get_summary",
+        "name": "get_close_summary",
         "description": (
-            "Get aggregated accrual summary grouped by a dimension "
-            "(project type, business unit, or phase)."
+            "Get the final close summary with all totals (gross accrual, net accrual, "
+            "net-down adjustment, future outlook) grouped by business unit."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "group_by": {
+                "business_unit": {
                     "type": "string",
-                    "enum": ["project_type", "business_unit", "phase"],
-                    "description": "Dimension to group accruals by.",
+                    "description": "Filter by business unit, or 'all'.",
+                    "default": "all",
                 }
             },
-            "required": ["group_by"],
+            "required": [],
         },
     },
     {
-        "name": "generate_outlook",
+        "name": "generate_outlook_load_file",
         "description": (
-            "Project future accruals based on the drill/frac schedule. "
-            "Uses Linear by Day allocation for drilling and completions phases. "
-            "Reference date is January 2026."
+            "Generate the monthly outlook grid for OneStream. Allocates future "
+            "outlook per well per category across future months using schedule-based "
+            "allocation (linear by day for drill/comp/fb, lump sum for hookup)."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
+                "business_unit": {
+                    "type": "string",
+                    "description": "Filter by business unit, or 'all'.",
+                    "default": "all",
+                },
                 "months_forward": {
                     "type": "integer",
                     "description": "Number of months to project forward (1-6).",
                     "minimum": 1,
                     "maximum": 6,
-                }
+                    "default": 6,
+                },
             },
-            "required": ["months_forward"],
+            "required": [],
         },
     },
 ]

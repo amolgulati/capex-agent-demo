@@ -17,19 +17,19 @@
 | Task | Description | Status |
 |------|-------------|--------|
 | 1 | Write failing tests for revised WBS master schema | DONE |
-| 2 | Rewrite data generator for wide-table WBS master | TODO |
-| 3 | Update data loader | TODO |
-| 4 | Build Step 1 tool — calculate_accruals | TODO |
-| 5 | Build Step 2 tool — calculate_net_down | TODO |
-| 6 | Build Step 3 tool — calculate_outlook | TODO |
-| 7 | Build OneStream load file generator | TODO |
-| 8 | Build supporting tools | TODO |
-| 9 | Build tool definitions for Claude API | TODO |
-| 10 | Build system prompt | TODO |
-| 11 | Build agent orchestrator | TODO |
-| 12 | Build CLI | TODO |
-| 13 | Build Streamlit UI | TODO |
-| 14 | Polish and demo-ready | TODO |
+| 2 | Rewrite data generator for wide-table WBS master | DONE |
+| 3 | Update data loader | DONE |
+| 4 | Build Step 1 tool — calculate_accruals | DONE |
+| 5 | Build Step 2 tool — calculate_net_down | DONE |
+| 6 | Build Step 3 tool — calculate_outlook | DONE |
+| 7 | Build OneStream load file generator | DONE |
+| 8 | Build supporting tools | DONE |
+| 9 | Build tool definitions for Claude API | DONE |
+| 10 | Build system prompt | DONE |
+| 11 | Build agent orchestrator | DONE |
+| 12 | Build CLI | DONE |
+| 13 | Build Streamlit UI | DONE |
+| 14 | Polish and demo-ready | DONE |
 
 ---
 
