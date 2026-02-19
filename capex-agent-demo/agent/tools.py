@@ -77,7 +77,8 @@ def calculate_accruals(business_unit: str = "all") -> dict:
         accruals.append(rec)
 
         # Exception detection
-        if total_gross < 0:
+        has_negative_accrual = total_gross < 0
+        if has_negative_accrual:
             exceptions.append({
                 "wbs_element": row["wbs_element"],
                 "well_name": row["well_name"],
@@ -86,8 +87,10 @@ def calculate_accruals(business_unit: str = "all") -> dict:
                 "detail": f"Total gross accrual is negative: ${total_gross:,.0f}",
             })
 
+        # Skip Large Swing check if well already has Negative Accrual —
+        # the swing is just a symptom of the negative accrual
         prior = row["prior_gross_accrual"]
-        if prior > 0:
+        if not has_negative_accrual and prior > 0:
             swing = abs(total_gross - prior) / prior
             if swing > 0.25:
                 exceptions.append({
