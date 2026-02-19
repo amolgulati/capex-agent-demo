@@ -4,8 +4,10 @@ Two data sources:
 - wbs_master.csv: Wide table with all financial data per well
 - drill_schedule.csv: Phase dates for time-based outlook allocation
 
-CSV reads are cached so repeated tool calls within a session don't
-re-read from disk.
+CSV reads are cached with functools.lru_cache so repeated tool calls
+within a session don't re-read from disk.  We use lru_cache (not
+@st.cache_data) because this module is also imported by CLI and tests.
+Streamlit-specific caching is layered on in app.py where needed.
 """
 
 from functools import lru_cache

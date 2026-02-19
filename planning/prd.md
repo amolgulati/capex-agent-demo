@@ -1,9 +1,9 @@
 # CapEx Gross Accrual Agent — Product Requirements Document
 
-**Version:** 1.4
-**Date:** February 17, 2026
+**Version:** 2.0
+**Date:** February 18, 2026
 **Author:** Amol Gulati
-**Status:** Draft — Revised per review feedback (v1.1: 6 fixes; v1.2: Streamlit execution model fixes; v1.3: edge-case hardening, priority tiers, projector readability; v1.4: added build status tracking)
+**Status:** Complete — All 5 phases done. v2.0: updated to reflect refactored data model (2 CSVs), current tool architecture, and completed polish pass.
 
 ---
 
@@ -17,12 +17,12 @@
 | **Phase 2 — Core Agent Tools** | DONE | `agent/tools.py`, `agent/tool_definitions.py`, `tests/test_tools.py` | 2026-02-18 |
 | **Phase 3 — Agent Orchestration** | DONE | `agent/orchestrator.py`, `agent/prompts.py`, `cli.py` | 2026-02-18 |
 | **Phase 4 — Streamlit UI** | DONE | `app.py`, `.streamlit/config.toml`, `utils/excel_export.py` | 2026-02-18 |
-| **Phase 5 — Polish & Demo-Ready** | IN PROGRESS | Streaming, breadcrumbs, banner, polish fixes | 2026-02-18 |
+| **Phase 5 — Polish & Demo-Ready** | DONE | Streaming, breadcrumbs, banner, polish fixes | 2026-02-18 |
 
 **Status values:** `NOT STARTED` · `IN PROGRESS` · `BLOCKED — [reason]` · `DONE`
 
-**Current focus:** Phase 5 — Polish & Demo-Ready
-**Next action:** Fix remaining CRITICAL and HIGH items from deep-dive review (see `docs/plans/fix-list.md`)
+**Current focus:** Demo ready
+**Next action:** None — all phases complete. Run demo with `streamlit run capex-agent-demo/app.py`
 **Known blockers:** None
 
 ---
@@ -75,7 +75,7 @@ A Streamlit web app that demonstrates an AI agent calculating CapEx gross accrua
 | Component | Technology | Notes |
 |-----------|-----------|-------|
 | Frontend | Streamlit | Chat interface, `st.chat_message`, `st.status` for breadcrumbs |
-| LLM | Claude API (Anthropic SDK) | `claude-sonnet-4-5-20250514` for reasoning quality; `claude-haiku-4-5-20251001` as fallback for speed/cost |
+| LLM | Claude API (Anthropic SDK) | `claude-sonnet-4-6` (default); override via `CAPEX_MODEL` env var |
 | Data | Pandas + CSV files | Loaded at startup, queried by agent tools |
 | Hosting | Streamlit Cloud (free tier) | Public URL, auto-deploys from GitHub |
 | Export | openpyxl | Excel download of accrual schedules |
@@ -237,29 +237,27 @@ Monthly allocation:
 
 ### 3.5 Exception Types
 
-The agent detects and flags 5 categories of exceptions. These are intentionally baked into the synthetic data.
+> **v2.0 Note:** The data model was refactored from 5 CSV files to 2. The wide `wbs_master.csv` now contains ITD, VOW, prior accrual, and WI% columns per cost category. Exception types were updated accordingly — "Missing ITD", "Missing VOW", and "Zero ITD" are replaced by "WI% Mismatch" and "Over Budget".
+
+The agent detects and flags 4 categories of exceptions. These are intentionally baked into the synthetic data.
 
 | # | Exception | Condition | Severity | What It Means | Recommended Action |
 |---|-----------|-----------|----------|---------------|-------------------|
-| 1 | **Missing ITD** | WBS has VOW but no matching record in ITD extract | HIGH | Work was done but nothing has been invoiced — could mean vendor hasn't billed, or WBS mapping error | Investigate with AP; check if invoices are pending |
-| 2 | **Negative Accrual** | ITD > VOW (accrual calculation yields a negative number) | HIGH | More has been invoiced than engineers say is done — possible overbilling, VOW underestimate, or timing issue | Review with BU engineer; verify VOW estimate accuracy |
-| 3 | **Missing VOW** | WBS exists in master list but no VOW submission from engineers | MEDIUM | Engineers didn't submit their estimate — common near period-end deadlines | Chase engineer for VOW submission before close |
-| 4 | **Large Swing** | Current accrual differs from prior period by more than 25%. **Guard:** If prior accrual is null or $0, do not flag Large Swing; treat as new WBS. | MEDIUM | Big change that needs explanation — could be legitimate (project phase change) or an error | Review with BU Controller; document explanation |
-| 5 | **Zero ITD** | WBS has VOW submitted but ITD amount is exactly $0 | LOW | New project where work has started but no invoices have been posted yet — often legitimate | Monitor; will resolve as invoices post |
+| 1 | **Negative Accrual** | Total gross accrual < 0 (ITD > VOW across all cost categories) | HIGH | More has been invoiced than engineers say is done — possible overbilling or VOW underestimate | Review with BU engineer; verify VOW estimate accuracy |
+| 2 | **Large Swing** | Current accrual differs from prior period by more than 25%. **Guard:** Skip if prior accrual is 0 or if well already has Negative Accrual. | MEDIUM | Big change that needs explanation — could be legitimate (project phase change) or an error | Review with BU Controller; document explanation |
+| 3 | **WI% Mismatch** | Working interest % differs between operator and partner records by more than 2pp | MEDIUM | Disagreement on ownership share — affects accrual allocation | Reconcile with JIB partner; confirm WI% before close |
+| 4 | **Over Budget** | Projected total cost (ITD + remaining outlook) exceeds AFE budget by more than 10% | MEDIUM | Well is trending over authorized spend — may need AFE amendment | Flag to BU Controller; assess need for supplemental AFE |
 
 ### 3.6 Data Relationships
 
 ```
-wbs_master (1) ────── (0..1) itd_extract        [join on wbs_element]
-wbs_master (1) ────── (0..1) vow_estimates        [join on wbs_element]
-wbs_master (1) ────── (0..1) prior_period_accruals [join on wbs_element]
+wbs_master.csv (1 row per well, wide table) ────── columns contain ITD, VOW, prior accrual per cost category
 wbs_master (1) ────── (0..N) drill_schedule       [join on wbs_element]
 ```
 
-- `wbs_master` is the authoritative list. Every calculation starts here.
-- Not every WBS in the master will have an ITD record (creates "Missing ITD" exception).
-- Not every WBS in the master will have a VOW record (creates "Missing VOW" exception).
-- The join gaps between these files ARE the exceptions. They are intentional.
+- `wbs_master.csv` is the single authoritative data file containing all financial data per well (18 wells, 4 cost categories: drill, comp, fb, hu).
+- `drill_schedule.csv` provides phase dates for outlook allocation (18 wells x 5 phases = 90 rows).
+- Exception triggers are built into the wide table columns (e.g., negative accrual wells have ITD > VOW).
 
 ### 3.7 Formulas Reference (Complete)
 
@@ -280,17 +278,14 @@ wbs_master (1) ────── (0..N) drill_schedule       [join on wbs_eleme
 
 All data is 100% fictional. No real corporate data. Well names, WBS numbers, dollar amounts, and dates are all synthetic.
 
-**Token Budget Constraint:** The row counts below are hard caps, not guidelines. Tool results are sent back to Claude as part of the conversation, and each tool result consumes context window tokens. With 50 WBS rows x 8 columns across 3 files, plus prior period and drill schedule data, the total data payload fits comfortably within Claude's context window (~5K tokens of data out of 200K available). However, if the data generator accidentally produces 500 rows instead of 50, tool results will bloat, API latency will increase, and costs will spike. The data generation script must enforce these exact caps.
+> **v2.0 Note:** The data model was refactored from 5 separate CSV files to 2. The original `itd_extract.csv`, `vow_estimates.csv`, and `prior_period_accruals.csv` were consolidated into a single wide-format `wbs_master.csv` with per-category columns for ITD, VOW, prior accruals, and WI%. The `drill_schedule.csv` remains separate. Sections 4.2-4.4 below describe the **original** design for historical reference; the current implementation uses the consolidated model described in Section 4.1.
 
-**Full API payload estimate:** System prompt (~500 tokens) + 9 tool schemas (~2,500 tokens) + 3 tool results from data loads (~3,000 tokens) + conversation history = ~8-10K tokens per turn on follow-up queries. Not a context window risk (200K available), but worth noting: each turn costs ~$0.03-0.05 and adds 1-2 seconds of input processing latency. This is acceptable for the demo but should not surprise anyone during testing.
+**Token Budget Constraint:** Row counts are hard caps. Tool results consume context window tokens. The `_outlook_to_dict()` function in the orchestrator compresses the 72-row outlook load file to ~600 tokens. Calculation functions use `@lru_cache` to avoid redundant recomputation.
 
-| File | Hard Cap | Rationale |
-|------|----------|-----------|
-| `wbs_master.csv` | 50 rows | ~35 Permian + 10 DJ + 5 Powder River |
-| `itd_extract.csv` | 47 rows max | 44 matched + 3 zero-ITD (3 completely absent) |
-| `vow_estimates.csv` | 48 rows max | 45 matched + some with multiple phases |
-| `prior_period_accruals.csv` | 50 rows max | 1:1 with wbs_master (some may be missing) |
-| `drill_schedule.csv` | 80 rows max | ~20 wells x 3-5 phase milestones |
+| File | Rows | Description |
+|------|------|-------------|
+| `wbs_master.csv` | 18 rows | Wide table: 1 row per well with ITD/VOW/prior accrual/WI% columns per cost category (drill, comp, fb, hu) |
+| `drill_schedule.csv` | 90 rows | 18 wells x 5 phases (spud, td, frac_start, frac_end, first_production) |
 
 ### 4.1 File: `wbs_master.csv` (~50 rows)
 
@@ -384,22 +379,22 @@ Forward-looking drill/frac schedule for the outlook projection.
 
 ### 4.6 Exception Summary Matrix
 
-This table maps exactly which WBS elements trigger which exceptions. The synthetic data generator must ensure these specific conditions exist.
+> **v2.0 Note:** Exception types were updated for the refactored data model. The current exceptions are detected by `calculate_accruals()`, `calculate_net_down()`, and `calculate_outlook()` in `agent/tools.py`.
 
-| Exception Type | Severity | Count | Mechanism | Specific WBS Elements |
-|---------------|----------|-------|-----------|----------------------|
-| Missing ITD | HIGH | 3 | WBS present in `vow_estimates.csv` but absent from `itd_extract.csv` | WBS-1031, WBS-1038, WBS-1044 |
-| Negative Accrual | HIGH | 1 | `itd_amount` > `vow_amount` for this WBS | WBS-1027 (ITD=$2,627K, VOW=$2,500K) |
-| Missing VOW | MEDIUM | 2 | WBS present in `wbs_master.csv` but absent from `vow_estimates.csv` | WBS-1015, WBS-1042 |
-| Large Swing | MEDIUM | 1 | Current accrual >25% different from `prior_gross_accrual` | WBS-1009 (prior=$800K, current=$1,072K, +34%) |
-| Zero ITD | LOW | 3 | WBS has `itd_amount` = 0 but has VOW submitted | WBS-1047, WBS-1048, WBS-1049 |
-| **Total** | | **10** | | *(7 unique WBS elements, some have multiple flags)* |
+| Exception Type | Severity | Mechanism | Detection Step |
+|---------------|----------|-----------|---------------|
+| Negative Accrual | HIGH | Total gross accrual (sum of VOW - ITD across all categories) < 0 | `calculate_accruals` |
+| Large Swing | MEDIUM | Current accrual >25% different from prior. Guard: skip if prior=0 or if Negative Accrual already flagged. | `calculate_accruals` |
+| WI% Mismatch | MEDIUM | Working interest differs between operator and partner by >2pp | `calculate_net_down` |
+| Over Budget | MEDIUM | Projected cost (ITD + outlook) exceeds `ops_budget` by >10% | `calculate_outlook` |
 
-**Note:** The demo spec mentions "7 exceptions across 5 categories" in the sample output. The actual count may vary slightly depending on overlap — the important thing is that all 5 exception types are represented with at least 1 occurrence each.
+**Note:** The Large Swing check is guarded to avoid double-flagging wells that already have a Negative Accrual exception.
 
 ---
 
 ## 5. Agent Logic & Tool Specifications
+
+> **v2.0 Note:** The tool architecture was refactored. The original `load_itd`, `load_vow` tools and `missing_itd_handling` parameter were replaced. The current architecture has 10 tools (9 data + `ask_user_question`): `load_wbs_master`, `calculate_accruals`, `calculate_net_down`, `calculate_outlook`, `get_exceptions`, `get_well_detail`, `generate_journal_entry`, `get_close_summary`, `generate_outlook_load_file`. The clarifying question now uses WI% mismatch (via `ask_user_question` tool) instead of `missing_itd_handling`. Sections 5.2-5.9 below describe the **original** tool designs for historical reference; see `agent/tool_definitions.py` and `agent/tools.py` for the current implementations.
 
 ### 5.1 Tool: `load_wbs_master`
 
@@ -746,6 +741,8 @@ Loop continues until Claude returns a final text response (no more tool calls)
 Final response rendered with formatted output
 ```
 
+> **v2.0 Note:** The demo flow was simplified. The agent now calls `calculate_accruals` directly (which reads from the wide `wbs_master.csv` internally) instead of separate `load_itd`/`load_vow` steps. The clarifying question is about WI% mismatch handling, not missing ITD. Steps 3-6 below describe the **original** design; see `agent/prompts.py` for the current flow.
+
 ### 6.2 Detailed Step-by-Step (Primary Demo Flow)
 
 **Step 1: User Input**
@@ -810,27 +807,30 @@ Examples:
 
 ### 6.4 Clarifying Question Logic
 
-The agent asks clarifying questions in these situations. The **Missing ITD** question is mandatory — the system prompt hard-codes this behavior to ensure the demo's key interactive moment happens 100% of the time, regardless of the LLM's non-deterministic tendencies.
+> **v2.0 Note:** The clarifying question was changed from "Missing ITD" handling to WI% mismatch handling. The mechanism now uses the `ask_user_question` tool (a dedicated tool the agent calls to pause and ask the user).
+
+The agent asks clarifying questions in these situations. The **WI% mismatch** question is mandatory — the system prompt hard-codes this behavior to ensure the demo's key interactive moment happens 100% of the time.
 
 | Trigger | Question | Options | Mandatory? |
 |---------|----------|---------|-----------|
-| WBS elements with VOW but no ITD | "How should I handle WBS elements with VOW but no ITD costs?" | Use VOW as full accrual / Exclude and flag / Use prior period | **YES — always ask, never skip** |
+| WI% mismatch detected after accrual calculation | "How should I handle the WI% discrepancy?" | Use operator WI% / Use partner WI% / Average both | **YES — always ask, never skip** |
 | Business unit is ambiguous | "Which business unit should I calculate for?" | Permian Basin / DJ Basin / Powder River / All | Only if ambiguous |
-| Period is ambiguous | "Which fiscal period should I calculate?" | Current month / Prior month / Specific month | Only if ambiguous |
 
-**Why the Missing ITD question is hard-coded:** This is the demo's "wow moment." It shows the audience that the agent asks for human judgment instead of guessing — the single most important differentiator between an agent and a script. If the LLM decides to auto-resolve this (because it's "feeling confident" that run), the demo loses its impact. The system prompt contains an explicit, non-negotiable instruction to always pause and ask.
+**Why the WI% question is hard-coded:** This is the demo's "wow moment." It shows the audience that the agent asks for human judgment instead of guessing — the single most important differentiator between an agent and a script. The system prompt contains an explicit, non-negotiable instruction to always pause and ask.
 
 **Implementation:**
-1. The system prompt (Section 7) contains a "Clarifying Question Rules" section with a `MANDATORY` instruction to always ask about missing ITD.
-2. The `calculate_accruals` tool requires `missing_itd_handling` as a parameter, making it structurally impossible for the agent to calculate without making a choice.
-3. In Streamlit: the question renders as `st.radio()` with a "Continue" button.
-4. On "Continue" click: the user's selection is mapped to a tool parameter value, wrapped in a user message, appended to `st.session_state.api_messages`, and the orchestrator resumes. See Section 8.5 for the full resume procedure.
+1. The system prompt (`agent/prompts.py`) mandates using `ask_user_question` when WI% mismatches are found.
+2. The `ask_user_question` tool in `tool_definitions.py` requires `question` and `options` parameters.
+3. The orchestrator detects `ask_user_question` tool calls and yields a `ClarifyEvent`, pausing the loop.
+4. In Streamlit: the question renders as `st.radio()` with a "Continue" button. On click: the user's selection is wrapped as a `tool_result`, appended to `api_messages`, and the orchestrator resumes via `st.rerun()`.
 
 ---
 
 ## 7. System Prompt
 
-The following is the complete system prompt sent to Claude with every API call.
+> **v2.0 Note:** The system prompt below is the **original** design. The current system prompt is in `agent/prompts.py` and differs significantly — it uses the refactored tool names, WI% mismatch instead of Missing ITD, and a 4-step workflow (accruals → net-down with clarifying question → outlook → summary).
+
+The following was the original system prompt design:
 
 ```
 You are a CapEx Gross Accrual Agent — an AI assistant that helps Finance teams
@@ -1675,6 +1675,32 @@ HOW TO USE THIS LOG:
 - `capex-agent-demo/agent/orchestrator.py` — max_tokens 4096 → 8192
 - `capex-agent-demo/app.py` — Sidebar downloads deferred until agent runs
 - `planning/prd.md` — Updated build dashboard and session log
+
+#### Session 5 — 2026-02-18
+**Duration:** ~30 min
+**Phase worked on:** Phase 5 — Polish (remaining items from fix-list.md)
+
+**What was done:**
+- Verified all CRITICAL items (1-4) and HIGH items (5-7) from fix-list.md were already implemented in Sessions 3-4
+- Archived 4 completed plan documents to `docs/plans/archive/` (item #8)
+- Updated PRD v1.4 → v2.0: added notes throughout Sections 3-7 documenting the refactored data model (2 CSVs vs 5), current tool architecture, updated exception types, and corrected technology references (item #10)
+- Marked Phase 5 as DONE in build dashboard, updated next action
+- Added CLI ASCII fallback for emoji icons via `CAPEX_ASCII=1` env var (item #14)
+- Documented why `lru_cache` is preferred over `@st.cache_data` in data_loader.py (item #15)
+- All 62 tests passing, no regressions
+
+**What to do next:**
+- Demo is ready to run: `streamlit run capex-agent-demo/app.py`
+- No remaining blockers
+
+**Blockers / Issues:**
+- None
+
+**Files created/modified:**
+- `planning/prd.md` — Updated to v2.0 with architecture notes, build dashboard, session log
+- `capex-agent-demo/cli.py` — Added ASCII icon fallback (`CAPEX_ASCII=1`)
+- `capex-agent-demo/utils/data_loader.py` — Added docstring note on lru_cache vs st.cache_data
+- `capex-agent-demo/docs/plans/archive/` — Moved 4 completed plan docs
 
 <!--
 ### Session Template (copy and fill in):

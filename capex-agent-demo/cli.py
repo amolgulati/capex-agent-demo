@@ -21,7 +21,9 @@ from agent.orchestrator import (
 
 load_dotenv()
 
-TOOL_ICONS = {
+_USE_ASCII = os.environ.get("CAPEX_ASCII", "").strip() == "1"
+
+TOOL_ICONS_EMOJI = {
     "load_wbs_master": "📊",
     "calculate_accruals": "🧮",
     "calculate_net_down": "⚖️",
@@ -32,6 +34,20 @@ TOOL_ICONS = {
     "get_close_summary": "📋",
     "generate_outlook_load_file": "📁",
 }
+
+TOOL_ICONS_ASCII = {
+    "load_wbs_master": "[data]",
+    "calculate_accruals": "[calc]",
+    "calculate_net_down": "[net]",
+    "calculate_outlook": "[outlook]",
+    "get_exceptions": "[!]",
+    "get_well_detail": "[detail]",
+    "generate_journal_entry": "[journal]",
+    "get_close_summary": "[summary]",
+    "generate_outlook_load_file": "[file]",
+}
+
+TOOL_ICONS = TOOL_ICONS_ASCII if _USE_ASCII else TOOL_ICONS_EMOJI
 
 
 def main():
@@ -68,7 +84,8 @@ def main():
         print()
         for event in agent.run(messages):
             if isinstance(event, ToolCallEvent):
-                icon = TOOL_ICONS.get(event.tool_name, "🔧")
+                fallback = "[>]" if _USE_ASCII else "🔧"
+                icon = TOOL_ICONS.get(event.tool_name, fallback)
                 print(f"  {icon} Calling {event.tool_name}...", flush=True)
             elif isinstance(event, ToolResultEvent):
                 pass  # Handled by the tool call event
@@ -77,7 +94,8 @@ def main():
             elif isinstance(event, DoneEvent):
                 pass
             elif isinstance(event, ErrorEvent):
-                print(f"\n❌ Error: {event.message}")
+                err_icon = "[X]" if _USE_ASCII else "❌"
+                print(f"\n{err_icon} Error: {event.message}")
 
         print("\n")
 
