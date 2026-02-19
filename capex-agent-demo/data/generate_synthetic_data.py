@@ -1,17 +1,13 @@
 """
-Synthetic data generator for CapEx Gross Accrual Agent Demo (Phase 1).
+Synthetic data generator for CapEx Close Agent Demo (v2).
 
-Produces 5 deterministic CSV files:
-    - wbs_master.csv          (50 rows)
-    - itd_extract.csv         (47 rows)
-    - vow_estimates.csv       (48 rows)
-    - prior_period_accruals.csv (48 rows)
-    - drill_schedule.csv      (60-80 rows)
+Produces 2 deterministic CSV files:
+    - wbs_master.csv      (18 rows, wide-table with per-category columns + WI%)
+    - drill_schedule.csv  (18 wells x 5 phases = 90 rows)
 
-Hardcoded exception records per PRD; seeded random for normal records.
+Hardcoded exception records per design doc; seeded random for normal records.
 """
 
-import os
 import random
 from pathlib import Path
 from datetime import date, timedelta
@@ -24,19 +20,19 @@ import pandas as pd
 SEED = 42
 DATA_DIR = Path(__file__).resolve().parent
 
-ALL_WBS = [f"WBS-{i}" for i in range(1001, 1051)]  # 50 elements
+ALL_WBS = [f"WBS-{i}" for i in range(1001, 1019)]  # 18 elements
 
-# Exception WBS elements
-MISSING_ITD_WBS = {"WBS-1031", "WBS-1038", "WBS-1044"}  # absent from itd_extract
-ZERO_ITD_WBS = {"WBS-1047", "WBS-1048", "WBS-1049"}      # itd_amount = 0
-MISSING_VOW_ONLY = {"WBS-1015", "WBS-1042"}               # absent from vow_estimates only
-MISSING_VOW_ALL = MISSING_VOW_ONLY.copy()                  # only 2 absent from vow
+COST_CATEGORIES = ["drill", "comp", "fb", "hu"]
 
-NEGATIVE_ACCRUAL_WBS = "WBS-1027"  # ITD > VOW
-LARGE_SWING_WBS = "WBS-1009"       # >30% swing vs prior
-
-# Prior period missing (new wells)
-MISSING_PRIOR_WBS = {"WBS-1049", "WBS-1050"}
+# Exception wells
+WI_MISMATCH_WELLS = {
+    "WBS-1003": {"wi_pct": 0.75, "system_wi_pct": 0.80},  # moderate
+    "WBS-1007": {"wi_pct": 0.60, "system_wi_pct": 0.85},  # large gap (25pp)
+    "WBS-1011": {"wi_pct": 0.65, "system_wi_pct": 0.70},  # small
+}
+NEGATIVE_ACCRUAL_WELL = "WBS-1005"
+LARGE_SWING_WELL = "WBS-1009"
+OVER_BUDGET_WELL = "WBS-1015"
 
 # Well name prefixes
 WELL_PREFIXES = [
@@ -45,13 +41,36 @@ WELL_PREFIXES = [
     "Frontier", "Muddy", "Dakota", "Parkman", "Teapot",
 ]
 
+# Business unit distribution: ~12 Permian, ~4 DJ, ~2 Powder River
+BU_ASSIGNMENT = {
+    "WBS-1001": "Permian Basin",
+    "WBS-1002": "Permian Basin",
+    "WBS-1003": "Permian Basin",
+    "WBS-1004": "DJ Basin",
+    "WBS-1005": "Permian Basin",
+    "WBS-1006": "Permian Basin",
+    "WBS-1007": "Permian Basin",
+    "WBS-1008": "DJ Basin",
+    "WBS-1009": "Permian Basin",
+    "WBS-1010": "Permian Basin",
+    "WBS-1011": "Permian Basin",
+    "WBS-1012": "DJ Basin",
+    "WBS-1013": "Permian Basin",
+    "WBS-1014": "Permian Basin",
+    "WBS-1015": "Powder River",
+    "WBS-1016": "DJ Basin",
+    "WBS-1017": "Powder River",
+    "WBS-1018": "Permian Basin",
+}
+
+DEFAULT_WI = 0.75  # default WI% for non-exception wells
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _random_date(rng: random.Random, start: date, end: date) -> date:
-    """Return a random date between start and end inclusive."""
     delta = (end - start).days
     return start + timedelta(days=rng.randint(0, delta))
 
@@ -61,34 +80,21 @@ def _format_date(d: date) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 1. wbs_master.csv — 50 rows
+# 1. wbs_master.csv — 18 rows, wide-table
 # ---------------------------------------------------------------------------
 
 def generate_wbs_master(rng: random.Random) -> pd.DataFrame:
-    """Generate wbs_master.csv with exactly 50 rows."""
+    """Generate wide-table wbs_master.csv with 18 rows.
 
-    # Business unit distribution: 35 Permian, 10 DJ, 5 Powder River
-    business_units = (
-        ["Permian Basin"] * 35 +
-        ["DJ Basin"] * 10 +
-        ["Powder River"] * 5
-    )
-    rng.shuffle(business_units)
-
-    # Status distribution: 40 Active, 7 Complete, 3 Suspended
+    Columns: wbs_element, well_name, afe_number, business_unit, status,
+    start_date, wi_pct, system_wi_pct,
+    {drill,comp,fb,hu}_{budget,itd,vow,ops_budget},
+    prior_gross_accrual
+    """
     statuses = (
-        ["Active"] * 40 +
-        ["Complete"] * 7 +
-        ["Suspended"] * 3
+        ["Active"] * 14 + ["Complete"] * 3 + ["Suspended"] * 1
     )
     rng.shuffle(statuses)
-
-    # Project types: ensure all 4 appear, rest random
-    project_types_base = ["Drilling", "Completion", "Facilities", "Workover"]
-    project_types = project_types_base[:4]  # first 4 guaranteed
-    for _ in range(46):
-        project_types.append(rng.choice(project_types_base))
-    rng.shuffle(project_types)
 
     rows = []
     for i, wbs in enumerate(ALL_WBS):
@@ -96,259 +102,171 @@ def generate_wbs_master(rng: random.Random) -> pd.DataFrame:
         prefix = rng.choice(WELL_PREFIXES)
         well_name = f"{prefix} {idx}-{rng.randint(1, 20)}H"
         afe_number = f"AFE-{rng.randint(20000, 99999)}"
-        budget = rng.randint(200, 1500) * 10_000  # $2M - $15M
+        bu = BU_ASSIGNMENT[wbs]
+        status = statuses[i]
         start_dt = _random_date(rng, date(2025, 1, 1), date(2026, 6, 30))
 
-        rows.append({
+        # WI% — defaults or exception
+        if wbs in WI_MISMATCH_WELLS:
+            wi_pct = WI_MISMATCH_WELLS[wbs]["wi_pct"]
+            system_wi_pct = WI_MISMATCH_WELLS[wbs]["system_wi_pct"]
+        else:
+            wi_pct = DEFAULT_WI
+            system_wi_pct = DEFAULT_WI
+
+        row = {
             "wbs_element": wbs,
             "well_name": well_name,
-            "project_type": project_types[i],
-            "business_unit": business_units[i],
             "afe_number": afe_number,
-            "status": statuses[i],
-            "budget_amount": budget,
+            "business_unit": bu,
+            "status": status,
             "start_date": _format_date(start_dt),
-        })
+            "wi_pct": wi_pct,
+            "system_wi_pct": system_wi_pct,
+        }
+
+        # Per-category financials
+        if wbs == NEGATIVE_ACCRUAL_WELL:
+            row.update(_generate_negative_accrual_well(rng))
+        elif wbs == LARGE_SWING_WELL:
+            row.update(_generate_large_swing_well(rng))
+        elif wbs == OVER_BUDGET_WELL:
+            row.update(_generate_over_budget_well(rng))
+        else:
+            row.update(_generate_normal_well(rng))
+
+        rows.append(row)
 
     return pd.DataFrame(rows)
 
 
-# ---------------------------------------------------------------------------
-# 2. itd_extract.csv — 47 rows (3 missing WBS)
-# ---------------------------------------------------------------------------
+def _generate_normal_well(rng: random.Random) -> dict:
+    """Generate per-category financials for a normal well."""
+    data = {}
+    total_gross_accrual = 0
 
-def generate_itd_extract(rng: random.Random, wbs_master: pd.DataFrame) -> pd.DataFrame:
-    """Generate itd_extract.csv with exactly 47 rows."""
+    for cat in COST_CATEGORIES:
+        budget = rng.randint(100, 500) * 10_000  # $1M - $5M
+        ops_budget = int(budget * rng.uniform(0.95, 1.10))
+        itd = int(budget * rng.uniform(0.20, 0.70))
+        vow = itd + rng.randint(50_000, 500_000)  # positive accrual
 
-    budget_map = dict(zip(wbs_master["wbs_element"], wbs_master["budget_amount"]))
-    cost_categories = ["Material", "Service", "Labor", "Equipment"]
+        data[f"{cat}_budget"] = budget
+        data[f"{cat}_itd"] = itd
+        data[f"{cat}_vow"] = vow
+        data[f"{cat}_ops_budget"] = ops_budget
 
-    # WBS elements present: all except the 3 missing
-    itd_wbs_list = [w for w in ALL_WBS if w not in MISSING_ITD_WBS]
-    assert len(itd_wbs_list) == 47
+        total_gross_accrual += (vow - itd)
 
-    # Make sure all 4 cost categories appear - assign first 4 deterministically
-    forced_categories = list(cost_categories)
-    rng.shuffle(forced_categories)
+    # prior_gross_accrual: close to current (within ±10%) so swing < 25%
+    factor = rng.uniform(0.90, 1.10)
+    data["prior_gross_accrual"] = max(0, int(total_gross_accrual * factor))
 
-    rows = []
-    for i, wbs in enumerate(itd_wbs_list):
-        budget = budget_map[wbs]
-        last_post = _random_date(rng, date(2025, 6, 1), date(2026, 1, 15))
+    return data
 
-        if i < 4:
-            cat = forced_categories[i]
+
+def _generate_negative_accrual_well(rng: random.Random) -> dict:
+    """WBS-1005: At least one category has ITD > VOW (negative accrual)."""
+    data = {}
+    total_gross_accrual = 0
+
+    for cat in COST_CATEGORIES:
+        budget = rng.randint(100, 500) * 10_000
+
+        if cat == "drill":
+            # Negative accrual: ITD > VOW (large gap to ensure total stays negative)
+            itd = 4_500_000
+            vow = 2_800_000
         else:
-            cat = rng.choice(cost_categories)
+            itd = int(budget * rng.uniform(0.30, 0.50))
+            vow = itd + rng.randint(50_000, 150_000)
 
-        vendor_count = rng.randint(1, 12)
+        ops_budget = int(budget * rng.uniform(0.95, 1.10))
 
-        # Determine itd_amount
-        if wbs in ZERO_ITD_WBS:
-            itd_amount = 0
-        elif wbs == NEGATIVE_ACCRUAL_WBS:
-            itd_amount = 2_627_000
-        elif wbs == LARGE_SWING_WBS:
-            # current_accrual = vow - itd ~= 1,072,000
-            # We'll set vow for WBS-1009 in vow generator, need itd here
-            # vow_1009 will be itd_1009 + 1_072_000
-            # Let's pick a reasonable itd for WBS-1009
-            itd_amount = 3_500_000  # vow will be 4_572_000
-        else:
-            # Normal: ITD is 20-80% of budget, at least 10,000
-            pct = rng.uniform(0.20, 0.80)
-            itd_amount = max(10_000, int(budget * pct))
+        data[f"{cat}_budget"] = budget
+        data[f"{cat}_itd"] = itd
+        data[f"{cat}_vow"] = vow
+        data[f"{cat}_ops_budget"] = ops_budget
 
-        rows.append({
-            "wbs_element": wbs,
-            "itd_amount": itd_amount,
-            "last_posting_date": _format_date(last_post),
-            "cost_category": cat,
-            "vendor_count": vendor_count,
-        })
+        total_gross_accrual += (vow - itd)
 
-    return pd.DataFrame(rows)
+    data["prior_gross_accrual"] = max(0, int(abs(total_gross_accrual) * rng.uniform(0.8, 1.2)))
+
+    return data
 
 
-# ---------------------------------------------------------------------------
-# 3. vow_estimates.csv — 48 rows (2 missing WBS)
-# ---------------------------------------------------------------------------
+def _generate_large_swing_well(rng: random.Random) -> dict:
+    """WBS-1009: Current accrual ~$1.07M vs prior ~$800K (+34% swing)."""
+    data = {}
+    # Target: total_gross_accrual ~= 1_070_000, prior = 800_000
+    # Distribute across categories
+    target_accruals = [400_000, 350_000, 200_000, 120_000]  # sum = 1_070_000
 
-def generate_vow_estimates(
-    rng: random.Random,
-    wbs_master: pd.DataFrame,
-    itd_extract: pd.DataFrame,
-) -> pd.DataFrame:
-    """Generate vow_estimates.csv with exactly 48 rows."""
+    for cat, target_accrual in zip(COST_CATEGORIES, target_accruals):
+        budget = rng.randint(200, 400) * 10_000
+        itd = int(budget * rng.uniform(0.30, 0.50))
+        vow = itd + target_accrual
+        ops_budget = int(budget * rng.uniform(0.95, 1.10))
 
-    budget_map = dict(zip(wbs_master["wbs_element"], wbs_master["budget_amount"]))
-    itd_map = dict(zip(itd_extract["wbs_element"], itd_extract["itd_amount"]))
-    phases = ["Drilling", "Completion", "Flowback", "Equip"]
-    engineers = [
-        "J. Smith", "R. Patel", "M. Garcia", "A. Johnson", "K. Lee",
-        "T. Williams", "S. Brown", "D. Martinez", "L. Chen", "P. Wilson",
-    ]
+        data[f"{cat}_budget"] = budget
+        data[f"{cat}_itd"] = itd
+        data[f"{cat}_vow"] = vow
+        data[f"{cat}_ops_budget"] = ops_budget
 
-    # WBS elements present: all except the 2 missing
-    vow_wbs_list = [w for w in ALL_WBS if w not in MISSING_VOW_ALL]
-    assert len(vow_wbs_list) == 48
+    data["prior_gross_accrual"] = 800_000
 
-    # Force all 4 phases to appear
-    forced_phases = list(phases)
-    rng.shuffle(forced_phases)
+    return data
 
-    rows = []
-    for i, wbs in enumerate(vow_wbs_list):
-        budget = budget_map[wbs]
-        submission_dt = _random_date(rng, date(2025, 10, 1), date(2026, 1, 31))
-        engineer = rng.choice(engineers)
 
-        if i < 4:
-            phase = forced_phases[i]
-        else:
-            phase = rng.choice(phases)
+def _generate_over_budget_well(rng: random.Random) -> dict:
+    """WBS-1015: Total in-system (VOW * WI%) exceeds total ops_budget."""
+    data = {}
+    total_gross_accrual = 0
 
-        pct_complete = round(rng.uniform(0.0, 100.0), 1)
+    for cat in COST_CATEGORIES:
+        budget = rng.randint(200, 500) * 10_000
+        itd = int(budget * rng.uniform(0.40, 0.60))
+        vow = int(budget * rng.uniform(0.90, 1.15))
+        # ops_budget must be < vow * wi_pct (0.75) so outlook goes negative
+        ops_budget = int(vow * rng.uniform(0.55, 0.70))
 
-        # Determine vow_amount
-        if wbs == NEGATIVE_ACCRUAL_WBS:
-            vow_amount = 2_500_000
-        elif wbs == LARGE_SWING_WBS:
-            # current_accrual = vow - itd = 1,072,000
-            # itd for WBS-1009 = 3,500,000
-            itd_1009 = itd_map.get(wbs, 3_500_000)
-            vow_amount = itd_1009 + 1_072_000  # = 4,572,000
-        else:
-            # Normal: VOW is 60-100% of budget, but at least 100,000 and at most 15M
-            itd = itd_map.get(wbs, 0)
-            # VOW should generally be > ITD for positive accrual
-            pct = rng.uniform(0.60, 1.00)
-            vow_amount = int(budget * pct)
-            # Ensure vow >= itd for normal wells (positive accrual)
-            if itd > 0 and vow_amount < itd:
-                vow_amount = itd + rng.randint(50_000, 500_000)
-            vow_amount = max(100_000, min(15_000_000, vow_amount))
+        data[f"{cat}_budget"] = budget
+        data[f"{cat}_itd"] = itd
+        data[f"{cat}_vow"] = vow
+        data[f"{cat}_ops_budget"] = ops_budget
 
-        rows.append({
-            "wbs_element": wbs,
-            "vow_amount": vow_amount,
-            "submission_date": _format_date(submission_dt),
-            "engineer_name": engineer,
-            "phase": phase,
-            "pct_complete": pct_complete,
-        })
+        total_gross_accrual += (vow - itd)
 
-    return pd.DataFrame(rows)
+    factor = rng.uniform(0.90, 1.10)
+    data["prior_gross_accrual"] = max(0, int(total_gross_accrual * factor))
+
+    return data
 
 
 # ---------------------------------------------------------------------------
-# 4. prior_period_accruals.csv — 48 rows
-# ---------------------------------------------------------------------------
-
-def generate_prior_period(
-    rng: random.Random,
-    itd_extract: pd.DataFrame,
-    vow_estimates: pd.DataFrame,
-) -> pd.DataFrame:
-    """Generate prior_period_accruals.csv with exactly 48 rows."""
-
-    itd_map = dict(zip(itd_extract["wbs_element"], itd_extract["itd_amount"]))
-    vow_map = dict(zip(vow_estimates["wbs_element"], vow_estimates["vow_amount"]))
-
-    # WBS elements present: all except the 2 new wells (WBS-1049, WBS-1050)
-    prior_wbs_list = [w for w in ALL_WBS if w not in MISSING_PRIOR_WBS]
-    assert len(prior_wbs_list) == 48
-
-    rows = []
-    for wbs in prior_wbs_list:
-        if wbs == LARGE_SWING_WBS:
-            prior_accrual = 800_000
-        else:
-            # Current accrual = vow - itd (if both exist), else just a reasonable value
-            itd = itd_map.get(wbs, 0)
-            vow = vow_map.get(wbs, 0)
-
-            if vow > 0 and itd >= 0:
-                current_accrual = vow - itd
-            else:
-                current_accrual = 0
-
-            if current_accrual > 0:
-                # Prior is within ~10-15% of current => swing < 30%
-                factor = rng.uniform(0.90, 1.10)
-                prior_accrual = max(0, int(current_accrual * factor))
-            else:
-                # For zero/negative current accrual, set a small prior
-                prior_accrual = rng.randint(0, 100_000)
-
-        rows.append({
-            "wbs_element": wbs,
-            "prior_gross_accrual": prior_accrual,
-            "period": "2025-12",
-        })
-
-    return pd.DataFrame(rows)
-
-
-# ---------------------------------------------------------------------------
-# 5. drill_schedule.csv — 60-80 rows
+# 2. drill_schedule.csv — all 18 wells x 5 phases
 # ---------------------------------------------------------------------------
 
 def generate_drill_schedule(rng: random.Random, wbs_master: pd.DataFrame) -> pd.DataFrame:
-    """Generate drill_schedule.csv with 60-80 rows, ~20 wells x 3-5 phases."""
-
+    """Generate drill_schedule.csv with all 18 wells, each with all 5 phases."""
     all_phases = ["Spud", "TD", "Frac Start", "Frac End", "First Production"]
-    master_wbs = list(wbs_master["wbs_element"])
-
-    # Select ~20 wells for the drill schedule
-    drill_wells = rng.sample(master_wbs, 20)
-
-    # We need all 5 phases to appear in the data.
-    # Strategy: ensure at least one well has all 5 phases,
-    # and vary others between 3-5 phases.
-    # Also need total rows between 60 and 80.
-
-    # First, plan how many phases each well gets
-    phase_counts = []
-    # First well: all 5 phases (guarantees all phases appear)
-    phase_counts.append(5)
-    # Remaining 19 wells: 3-4 phases to keep total in 60-80 range
-    for _ in range(19):
-        phase_counts.append(rng.choice([3, 3, 4, 4, 4]))
-
-    total = sum(phase_counts)
-    # Adjust if needed to be in 60-80 range
-    # With 1*5 + 19*(avg 3.6) = 5 + 68.4 = ~73, should be fine
 
     rows = []
-    for well_idx, wbs in enumerate(drill_wells):
-        n_phases = phase_counts[well_idx]
-
-        if n_phases == 5:
-            selected_phases = all_phases[:]
-        elif n_phases == 4:
-            # Drop one of the later phases (not Spud, to keep variety)
-            drop_idx = rng.choice([1, 2, 3, 4])
-            selected_phases = [p for j, p in enumerate(all_phases) if j != drop_idx]
-        else:  # 3
-            # Pick 3 phases maintaining order
-            indices = sorted(rng.sample(range(5), 3))
-            selected_phases = [all_phases[j] for j in indices]
+    for _, well in wbs_master.iterrows():
+        wbs = well["wbs_element"]
 
         # Generate strictly sequential dates
-        base_date = _random_date(rng, date(2025, 3, 1), date(2026, 3, 1))
+        base_date = _random_date(rng, date(2025, 3, 1), date(2026, 6, 1))
         phase_dates = [base_date]
-        for _ in range(len(selected_phases) - 1):
-            gap = rng.randint(15, 90)  # 15-90 days between phases
+        for _ in range(len(all_phases) - 1):
+            gap = rng.randint(15, 90)
             phase_dates.append(phase_dates[-1] + timedelta(days=gap))
 
-        for phase, dt in zip(selected_phases, phase_dates):
-            cost = rng.randint(10, 550) * 10_000  # $100K - $5.5M
+        for phase, dt in zip(all_phases, phase_dates):
             rows.append({
                 "wbs_element": wbs,
                 "planned_phase": phase,
                 "planned_date": _format_date(dt),
-                "estimated_cost": cost,
             })
 
     return pd.DataFrame(rows)
@@ -366,27 +284,12 @@ def main():
     wbs_master.to_csv(DATA_DIR / "wbs_master.csv", index=False)
     print(f"  -> {len(wbs_master)} rows")
 
-    print("Generating itd_extract.csv ...")
-    itd_extract = generate_itd_extract(rng, wbs_master)
-    itd_extract.to_csv(DATA_DIR / "itd_extract.csv", index=False)
-    print(f"  -> {len(itd_extract)} rows")
-
-    print("Generating vow_estimates.csv ...")
-    vow_estimates = generate_vow_estimates(rng, wbs_master, itd_extract)
-    vow_estimates.to_csv(DATA_DIR / "vow_estimates.csv", index=False)
-    print(f"  -> {len(vow_estimates)} rows")
-
-    print("Generating prior_period_accruals.csv ...")
-    prior_period = generate_prior_period(rng, itd_extract, vow_estimates)
-    prior_period.to_csv(DATA_DIR / "prior_period_accruals.csv", index=False)
-    print(f"  -> {len(prior_period)} rows")
-
     print("Generating drill_schedule.csv ...")
     drill_schedule = generate_drill_schedule(rng, wbs_master)
     drill_schedule.to_csv(DATA_DIR / "drill_schedule.csv", index=False)
     print(f"  -> {len(drill_schedule)} rows")
 
-    print("\nAll 5 CSV files generated successfully!")
+    print("\nAll CSV files generated successfully!")
 
 
 if __name__ == "__main__":

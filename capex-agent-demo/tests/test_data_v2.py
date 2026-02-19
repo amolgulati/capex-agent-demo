@@ -1,9 +1,12 @@
 """Tests for revised wide-table WBS master with per-category columns and WI%."""
 
+import sys
 from pathlib import Path
 
 import pandas as pd
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 WBS_MASTER_PATH = DATA_DIR / "wbs_master.csv"
@@ -179,3 +182,31 @@ class TestDrillSchedule:
         actual = set(drill_schedule["planned_phase"].unique())
         expected = set(self.PHASE_ORDER)
         assert actual == expected, f"Missing phases: {expected - actual}"
+
+
+# ---------------------------------------------------------------------------
+# Data Loader tests
+# ---------------------------------------------------------------------------
+from utils.data_loader import load_wbs_master, load_drill_schedule
+
+
+class TestDataLoader:
+    def test_load_wbs_master_all(self):
+        df = load_wbs_master()
+        assert 15 <= len(df) <= 20
+        assert "wi_pct" in df.columns
+        assert "drill_budget" in df.columns
+
+    def test_load_wbs_master_permian(self):
+        df = load_wbs_master("Permian Basin")
+        assert len(df) >= 10
+        assert (df["business_unit"] == "Permian Basin").all()
+
+    def test_load_wbs_master_invalid_bu(self):
+        df = load_wbs_master("NonExistent Basin")
+        assert len(df) == 0
+
+    def test_load_drill_schedule(self):
+        df = load_drill_schedule()
+        assert "planned_date" in df.columns
+        assert pd.api.types.is_datetime64_any_dtype(df["planned_date"])
