@@ -140,25 +140,28 @@ class AgentOrchestrator:
         """
         for turn in range(MAX_TURNS):
             try:
-                response = self.client.messages.create(
+                with self.client.messages.stream(
                     model=self.model,
                     max_tokens=4096,
                     system=SYSTEM_PROMPT,
                     tools=TOOL_DEFINITIONS,
                     messages=messages,
-                )
+                ) as stream:
+                    for text in stream.text_stream:
+                        yield TextEvent(text=text)
+                    response = stream.get_final_message()
             except anthropic.APIError as e:
                 yield ErrorEvent(message=f"API error: {e}")
                 return
 
-            # Collect assistant text and tool calls from the response
+            # Collect assistant text and tool calls from the final message
             assistant_text = ""
             tool_calls = []
 
             for block in response.content:
                 if block.type == "text":
                     assistant_text += block.text
-                    yield TextEvent(text=block.text)
+                    # Text already streamed above via text_stream
                 elif block.type == "tool_use":
                     tool_calls.append(block)
                     yield ToolCallEvent(
