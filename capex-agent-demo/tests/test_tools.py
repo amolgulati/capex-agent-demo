@@ -257,7 +257,7 @@ class TestGetCloseSummary:
 class TestToolDefinitions:
     def test_all_definitions_valid(self):
         from agent.tool_definitions import TOOL_DEFINITIONS
-        assert len(TOOL_DEFINITIONS) == 9
+        assert len(TOOL_DEFINITIONS) == 10
         for td in TOOL_DEFINITIONS:
             assert "name" in td
             assert "description" in td

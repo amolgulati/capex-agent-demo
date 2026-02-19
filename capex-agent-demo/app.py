@@ -68,6 +68,19 @@ st.markdown("""
     .stChatMessage {
         border-radius: 8px;
     }
+
+    /* Persistent demo banner */
+    .demo-banner {
+        background-color: #FF6F00;
+        color: #fff;
+        text-align: center;
+        padding: 8px 16px;
+        font-weight: 700;
+        font-size: 0.95em;
+        letter-spacing: 0.5px;
+        border-radius: 6px;
+        margin-bottom: 12px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -105,6 +118,10 @@ TOOL_DISPLAY_NAMES = {
 with st.sidebar:
     st.title("CapEx Close Agent")
     st.caption("Monthly Close Demo — January 2026")
+    st.markdown(
+        '<div class="demo-banner">⚠️ DEMO — SYNTHETIC DATA ONLY</div>',
+        unsafe_allow_html=True,
+    )
 
     st.divider()
 
@@ -184,6 +201,10 @@ with st.sidebar:
 # Main chat area
 # ---------------------------------------------------------------------------
 
+st.markdown(
+    '<div class="demo-banner">⚠️ DEMO — SYNTHETIC DATA ONLY — No real corporate data is used</div>',
+    unsafe_allow_html=True,
+)
 st.title("CapEx Monthly Close Agent")
 st.caption("AI-powered capital expenditure close process — January 2026")
 
@@ -255,8 +276,8 @@ def _run_agent():
     agent = AgentOrchestrator(api_key=api_key, model=model)
 
     with st.chat_message("assistant"):
-        response_container = st.empty()
         breadcrumb_container = st.container()
+        response_container = st.empty()
         full_response = ""
         breadcrumbs = []
 
@@ -297,7 +318,7 @@ def _run_agent():
         except Exception as e:
             st.error(f"Agent error: {e}")
 
-    if full_response:
+    if full_response or breadcrumbs:
         st.session_state.messages.append({
             "role": "assistant",
             "content": full_response,

@@ -21,12 +21,13 @@ When asked to run a monthly close, follow this 3-step process:
 
 ### Step 2: WI% Net-Down Adjustments
 5. Check for working interest discrepancies (use `calculate_net_down`)
-6. **IMPORTANT — Clarifying question:** If WI% mismatches are found, PAUSE and inform \
-the user. Present the discrepancies clearly and ask:
-   > "I found [N] wells where the Working Interest in the system doesn't match the \
-actual WI%. The largest is [well] — system has [X]% but should be [Y]%. \
-Should I proceed with the net-down adjustments?"
-7. Only proceed after the user confirms
+6. **IMPORTANT — Clarifying question:** If WI% mismatches are found, use the \
+`ask_user_question` tool to pause and ask the user. Include the number of mismatched \
+wells and the largest discrepancy in the question. Provide options like:
+   - "Yes, proceed with net-down adjustments"
+   - "No, skip the net-down step"
+   - "Show me the details first"
+7. Only proceed after the user confirms via the tool response
 
 ### Step 3: Future Outlook
 8. Calculate future outlook per well (use `calculate_outlook`)
@@ -73,7 +74,7 @@ reference date.
 ## Important Rules
 
 1. Always run the 3 steps in order — accruals first, then net-down, then outlook
-2. Always pause after Step 2 if WI% mismatches are found — ask the user before proceeding
+2. Always pause after Step 2 if WI% mismatches are found — use `ask_user_question` tool
 3. Never skip exception reporting
 4. When asked about a specific well, use `get_well_detail` for the full waterfall
 5. When asked for exceptions, use `get_exceptions` with optional severity filter

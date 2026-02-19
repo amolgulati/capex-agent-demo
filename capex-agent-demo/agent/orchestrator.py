@@ -111,6 +111,15 @@ class ErrorEvent:
     type: str = "error"
 
 
+@dataclass
+class ClarifyEvent:
+    """The agent is asking the user a clarifying question."""
+    question: str
+    options: list
+    tool_use_id: str
+    type: str = "clarify"
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -179,6 +188,19 @@ class AgentOrchestrator:
             if not tool_calls:
                 yield DoneEvent(full_response=assistant_text)
                 return
+
+            # Check for clarifying question tool
+            clarify_tc = next(
+                (tc for tc in tool_calls if tc.name == "ask_user_question"),
+                None,
+            )
+            if clarify_tc:
+                yield ClarifyEvent(
+                    question=clarify_tc.input.get("question", ""),
+                    options=clarify_tc.input.get("options", []),
+                    tool_use_id=clarify_tc.id,
+                )
+                return  # Pause — UI will resume with tool_result
 
             # Process tool calls and build tool results
             tool_results = []

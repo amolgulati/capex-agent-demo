@@ -189,4 +189,31 @@ TOOL_DEFINITIONS = [
             "required": [],
         },
     },
+    {
+        "name": "ask_user_question",
+        "description": (
+            "Ask the user a clarifying question and wait for their response. "
+            "Use this when you need human judgment before proceeding — for example, "
+            "when WI% mismatches are found and you need confirmation to proceed "
+            "with net-down adjustments. The user will see radio buttons with your "
+            "options and a Continue button."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The question to ask the user.",
+                },
+                "options": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "2-4 answer choices for the user to pick from.",
+                    "minItems": 2,
+                    "maxItems": 4,
+                },
+            },
+            "required": ["question", "options"],
+        },
+    },
 ]
