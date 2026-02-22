@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>D&C CapEx Close — Current Process</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding: 36px 60px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .header h1 {
+    font-size: 36px;
+    font-weight: 700;
+    color: #f8fafc;
+    letter-spacing: -0.5px;
+  }
+  .header h1 span { color: #f97316; }
+  .header .subtitle {
+    font-size: 16px;
+    color: #94a3b8;
+    margin-top: 4px;
+    font-weight: 400;
+  }
+  .pain-badge {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    border-radius: 8px;
+    padding: 10px 20px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .pain-badge .number {
+    font-size: 32px;
+    font-weight: 700;
+    color: #ef4444;
+    line-height: 1;
+  }
+  .pain-badge .label {
+    font-size: 12px;
+    color: #fca5a5;
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* ── Flow area ── */
+  .flow-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 20px 60px 24px;
+    gap: 12px;
+  }
+
+  /* ── Swim-lane row ── */
+  .lane {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    min-height: 68px;
+  }
+  .lane-label {
+    width: 130px;
+    flex-shrink: 0;
+    text-align: right;
+    padding-right: 18px;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    line-height: 1.3;
+  }
+  .lane-label.ops    { color: #38bdf8; }
+  .lane-label.fin    { color: #a78bfa; }
+  .lane-label.acctg  { color: #34d399; }
+  .lane-label.ctrl   { color: #fbbf24; }
+
+  .lane-steps {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    position: relative;
+  }
+
+  /* ── Step card ── */
+  .step {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 10px 16px;
+    min-width: 140px;
+    max-width: 200px;
+    position: relative;
+    transition: transform 0.15s;
+  }
+  .step:hover { transform: translateY(-2px); }
+  .step .num {
+    display: inline-block;
+    background: #334155;
+    color: #94a3b8;
+    font-size: 10px;
+    font-weight: 700;
+    width: 20px;
+    height: 20px;
+    line-height: 20px;
+    text-align: center;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .step .title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #f1f5f9;
+    display: inline;
+    vertical-align: middle;
+  }
+  .step .detail {
+    font-size: 11px;
+    color: #94a3b8;
+    margin-top: 4px;
+    line-height: 1.35;
+  }
+  .step .tool-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-top: 4px;
+  }
+  .tag-sap   { background: rgba(56,189,248,0.15); color: #7dd3fc; }
+  .tag-excel { background: rgba(52,211,153,0.15); color: #6ee7b7; }
+  .tag-email { background: rgba(251,191,36,0.15); color: #fde68a; }
+  .tag-manual { background: rgba(249,115,22,0.15); color: #fdba74; }
+
+  /* pain highlight */
+  .step.pain {
+    border-color: rgba(239, 68, 68, 0.45);
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.1);
+  }
+  .step.pain .num {
+    background: rgba(239, 68, 68, 0.25);
+    color: #fca5a5;
+  }
+
+  /* ── Arrow connector ── */
+  .arrow {
+    width: 28px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #475569;
+    font-size: 16px;
+  }
+  .arrow svg {
+    width: 24px;
+    height: 24px;
+    stroke: #475569;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* ── Handoff arrow (vertical / diagonal) ── */
+  .handoff-arrow {
+    width: 28px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .handoff-arrow svg {
+    width: 24px;
+    height: 24px;
+    stroke: #f97316;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* ── Footer stats ── */
+  .footer {
+    padding: 0 60px 30px;
+    display: flex;
+    gap: 32px;
+    justify-content: center;
+  }
+  .stat {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(30,41,59,0.7);
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 10px 20px;
+  }
+  .stat-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .stat-icon.red    { background: rgba(239,68,68,0.15); }
+  .stat-icon.amber  { background: rgba(251,191,36,0.15); }
+  .stat-icon.blue   { background: rgba(56,189,248,0.15); }
+  .stat-icon.purple { background: rgba(167,139,250,0.15); }
+  .stat-text .val {
+    font-size: 18px;
+    font-weight: 700;
+    color: #f1f5f9;
+  }
+  .stat-text .lbl {
+    font-size: 11px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Prompt callout ── */
+  .prompt-bar {
+    margin: 0 60px 0;
+    padding: 12px 24px;
+    background: rgba(249, 115, 22, 0.08);
+    border: 1px solid rgba(249, 115, 22, 0.25);
+    border-radius: 8px;
+    text-align: center;
+    font-size: 20px;
+    font-weight: 500;
+    color: #fb923c;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── Divider between lanes ── */
+  .lane-divider {
+    margin-left: 130px;
+    border: none;
+    border-top: 1px dashed #1e293b;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<div class="header">
+  <div>
+    <h1>D&C CapEx Close: <span>The Current Process</span></h1>
+    <div class="subtitle">Monthly accrual cycle — Drilling & Completions</div>
+  </div>
+  <div class="pain-badge">
+    <div class="number">40–60 hrs</div>
+    <div class="label">per month</div>
+  </div>
+</div>
+
+<!-- ── Process Flow ── -->
+<div class="flow-container">
+
+  <!-- Row 1 — Operations -->
+  <div class="lane">
+    <div class="lane-label ops">Operations /<br>Engineers</div>
+    <div class="lane-steps">
+      <div class="step">
+        <span class="num">1</span>
+        <span class="title">Update Drill &amp; Frac Schedules</span>
+        <div class="detail">Each BU maintains its own schedule files</div>
+        <span class="tool-tag tag-excel">Excel</span>
+      </div>
+      <div class="arrow"><svg><line x1="0" y1="12" x2="20" y2="12"/><polyline points="16,7 22,12 16,17"/></svg></div>
+      <div class="step pain">
+        <span class="num">2</span>
+        <span class="title">Submit WIP Estimates</span>
+        <div class="detail">Per-well value-of-work estimates emailed to Finance</div>
+        <span class="tool-tag tag-email">Email</span>
+        <span class="tool-tag tag-excel">Excel</span>
+      </div>
+      <div class="arrow"><svg><line x1="0" y1="12" x2="20" y2="12"/><polyline points="16,7 22,12 16,17"/></svg></div>
+      <div class="step pain">
+        <span class="num">3</span>
+        <span class="title">Chase Missing WIPs</span>
+        <div class="detail">Follow up on late / missing responses from field</div>
+        <span class="tool-tag tag-email">Email</span>
+        <span class="tool-tag tag-manual">Phone</span>
+      </div>
+    </div>
+  </div>
+
+  <hr class="lane-divider">
+
+  <!-- Row 2 — Finance -->
+  <div class="lane">
+    <div class="lane-label fin">Finance<br>Analyst</div>
+    <div class="lane-steps">
+      <div class="step">
+        <span class="num">4</span>
+        <span class="title">Extract ITD from SAP</span>
+        <div class="detail">Pull ACDOCA actuals for each WBS element</div>
+        <span class="tool-tag tag-sap">SAP</span>
+      </div>
+      <div class="arrow"><svg><line x1="0" y1="12" x2="20" y2="12"/><polyline points="16,7 22,12 16,17"/></svg></div>
+      <div class="step pain">
+        <span class="num">5</span>
+        <span class="title">Build Accrual Workbook</span>
+        <div class="detail">Manually join ITD + WIP per WBS in Excel; calculate VOW − ITD</div>
+        <span class="tool-tag tag-excel">Excel</span>
+        <span class="tool-tag tag-manual">Manual</span>
+      </div>
+      <div class="arrow"><svg><line x1="0" y1="12" x2="20" y2="12"/><polyline points="16,7 22,12 16,17"/></svg></div>
+      <div class="step pain">
+        <span class="num">6</span>
+        <span class="title">Investigate Exceptions</span>
+        <div class="detail">Negative accruals, missing data, large swings — manual review</div>
+        <span class="tool-tag tag-excel">Excel</span>
+        <span class="tool-tag tag-email">Email</span>
+      </div>
+      <div class="arrow"><svg><line x1="0" y1="12" x2="20" y2="12"/><polyline points="16,7 22,12 16,17"/></svg></div>
+      <div class="step">
+        <span class="num">7</span>
+        <span class="title">Prepare Net-Down &amp; Outlook</span>
+        <div class="detail">Calculate current vs. prior accrual; build forward forecast</div>
+        <span class="tool-tag tag-excel">Excel</span>
+      </div>
+    </div>
+  </div>
+
+  <hr class="lane-divider">
+
+  <!-- Row 3 — Controller -->
+  <div class="lane">
+    <div class="lane-label ctrl">BU<br>Controller</div>
+    <div class="lane-steps">
+      <div class="step">
+        <span class="num">8</span>
+        <span class="title">Review &amp; Approve</span>
+        <div class="detail">Validate accruals, sign off on exceptions, approve posting</div>
+        <span class="tool-tag tag-excel">Excel</span>
+        <span class="tool-tag tag-email">Email</span>
+      </div>
+      <div class="arrow"><svg><line x1="0" y1="12" x2="20" y2="12"/><polyline points="16,7 22,12 16,17"/></svg></div>
+      <div class="step">
+        <span class="num">9</span>
+        <span class="title">Variance Commentary</span>
+        <div class="detail">Explain month-over-month changes to leadership</div>
+        <span class="tool-tag tag-manual">Manual</span>
+      </div>
+    </div>
+  </div>
+
+  <hr class="lane-divider">
+
+  <!-- Row 4 — Accounting -->
+  <div class="lane">
+    <div class="lane-label acctg">Accounting</div>
+    <div class="lane-steps">
+      <div class="step">
+        <span class="num">10</span>
+        <span class="title">Format Accrual File</span>
+        <div class="detail">Reformat net-down for SAP journal entry upload</div>
+        <span class="tool-tag tag-excel">Excel</span>
+      </div>
+      <div class="arrow"><svg><line x1="0" y1="12" x2="20" y2="12"/><polyline points="16,7 22,12 16,17"/></svg></div>
+      <div class="step">
+        <span class="num">11</span>
+        <span class="title">Book Journal Entry</span>
+        <div class="detail">Post accrual &amp; reversal entries in SAP</div>
+        <span class="tool-tag tag-sap">SAP</span>
+      </div>
+      <div class="arrow"><svg><line x1="0" y1="12" x2="20" y2="12"/><polyline points="16,7 22,12 16,17"/></svg></div>
+      <div class="step">
+        <span class="num">12</span>
+        <span class="title">Close Period</span>
+        <div class="detail">Reconcile, archive workbooks, finalize month</div>
+        <span class="tool-tag tag-sap">SAP</span>
+        <span class="tool-tag tag-excel">Excel</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Prompt question ── -->
+<div class="prompt-bar">
+  Who here is familiar with this process? &nbsp;How long does it take your team?
+</div>
+
+<!-- ── Footer stats ── -->
+<div class="footer">
+  <div class="stat">
+    <div class="stat-icon red">&#9201;</div>
+    <div class="stat-text">
+      <div class="val">40–60 hrs / month</div>
+      <div class="lbl">Manual accrual calculation</div>
+    </div>
+  </div>
+  <div class="stat">
+    <div class="stat-icon amber">&#9888;</div>
+    <div class="stat-text">
+      <div class="val">15–20% variance</div>
+      <div class="lbl">Forecast vs. actuals</div>
+    </div>
+  </div>
+  <div class="stat">
+    <div class="stat-icon blue">&#128337;</div>
+    <div class="stat-text">
+      <div class="val">2–4 week lag</div>
+      <div class="lbl">Schedule → financial visibility</div>
+    </div>
+  </div>
+  <div class="stat">
+    <div class="stat-icon purple">&#128203;</div>
+    <div class="stat-text">
+      <div class="val">Inconsistent</div>
+      <div class="lbl">Methods vary across BUs</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
