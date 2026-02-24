@@ -276,9 +276,9 @@ if st.session_state.pending_question:
 
 def _run_agent():
     """Run the agent and process events."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = os.environ.get("ANTHROPIC_API_KEY") or st.secrets.get("ANTHROPIC_API_KEY")
     if not api_key:
-        st.error("ANTHROPIC_API_KEY not set. Create a .env file with your key.")
+        st.error("ANTHROPIC_API_KEY not set. Add it to Streamlit secrets or a .env file.")
         st.stop()
 
     model = os.environ.get("CAPEX_MODEL", "claude-sonnet-4-6")
